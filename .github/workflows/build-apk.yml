@@ -28,7 +28,7 @@ jobs:
         run: npm install
 
       - name: Prebuild React Native App
-        run: npx expo prebuild --platform android
+        run: npx expo prebuild --platform android --clean
 
       - name: Build Android APK
         run: |
