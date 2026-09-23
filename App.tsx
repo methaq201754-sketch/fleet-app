@@ -15,8 +15,20 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 
 type Role = 'Admin' | 'Driver';
-type RequestType = 'محروقات' | 'زيوت' | 'قطع غيار' | 'صيانة';
+type RequestType = 'محروقات' | 'زيوت' | 'قطع غيار' | 'صيانة' | 'تائرات';
 type RequestStatus = 'قيد الانتظار' | 'تمت الموافقة' | 'مرفوض';
+
+interface CarData {
+  carNumber: string;
+  carName: string;
+  driverName: string;
+  model: string;
+  fuelType: 'ديزل' | 'بترول';
+  transportType: 'ثقيل' | 'خفيف' | 'ركاب' | 'خدمات';
+  chassisNumber?: string;
+  engineNumber?: string;
+  lastOdometer: number;
+}
 
 interface User {
   username: string;
@@ -37,60 +49,129 @@ interface ServiceRequest {
   driverName: string;
   carNumber: string;
   type: RequestType;
-  stationName?: string;
+  dateTime: string;
+  
   quantityLiters?: number;
   unitPrice?: number;
+  stationName?: string;
+  allocationRegion?: string;
+  
+  oilType?: string;
+  previousOdometer?: number;
+  currentOdometer?: number;
+  distanceTraveled?: number;
+  
+  maintenanceReason?: string;
+  sparePartName?: string;
+  
   totalCost: number;
   details?: string;
-  odometerReading?: number;
   imageUri?: string;
-  dateTime: string;
   status: RequestStatus;
 }
 
-const INITIAL_USERS: User[] = [
-  { username: 'ميثاق', password: '111', role: 'Admin', carNumber: 'إدارة', driverName: 'ميثاق (المدير)' },
-  { username: '22618', password: '000', role: 'Driver', carNumber: 'ط - 1024', driverName: 'سائق 22618' },
-  { username: '36040', password: '000', role: 'Driver', carNumber: 'ط - 2055', driverName: 'سائق 36040' },
-  { username: '31710', password: '000', role: 'Driver', carNumber: 'ط - 3012', driverName: 'سائق 31710' },
-  { username: '30551', password: '000', role: 'Driver', carNumber: 'ط - 4088', driverName: 'سائق 30551' },
-  { username: '46166', password: '000', role: 'Driver', carNumber: 'ط - 5019', driverName: 'سائق 46166' },
+const INITIAL_CARS: CarData[] = [
+  { carNumber: '22618', carName: 'قاطرة فولفو 2002رقم 22618', driverName: 'عبد الغني علي دحان', model: '2002', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 150000 },
+  { carNumber: '36040', carName: 'شاحنة فولفو2013 رقم 36040', driverName: 'حافظ عبده محمد النينه', model: '2013', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 120000 },
+  { carNumber: '28336', carName: 'متسوبيشي فوزو 2012رقم 28336', driverName: 'عبد الله احمد عبد الله', model: '2012', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 98000 },
+  { carNumber: '31538', carName: 'ايسوزو2016 رقم 31538', driverName: 'خالد عثمان سعيد', model: '2016', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 75000 },
+  { carNumber: '34552', carName: 'ايسوزو 2015 رقم 34552', driverName: 'عبد الاله محمد احمد', model: '2015', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 82000 },
+  { carNumber: '33230', carName: 'بابور اسيوزا2016 رقم  33230', driverName: 'سامي عبدالنور', model: '2016', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 64000 },
+  { carNumber: '34208', carName: 'ايسوزو2020 رقم 34208', driverName: 'محمد عبده محمد', model: '2020', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 45000 },
+  { carNumber: '28807', carName: 'دينا متسوبيشي2012 رقم 28807', driverName: 'عفيف سعيد محمد', model: '2012', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 110000 },
+  { carNumber: '29485', carName: 'دينا متسوبيشي2013 رقم 29485', driverName: 'حمود سرحان', model: '2013', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 105000 },
+  { carNumber: '30646', carName: 'دينا متسوبيشي 2014رقم 30646', driverName: 'عبده محمد النينه', model: '2014', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 95000 },
+  { carNumber: '36697', carName: 'دينا متسوبيشي2013 رقم 36697', driverName: 'حسام عبده سالم', model: '2013', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 89000 },
+  { carNumber: '34451', carName: 'باص كوستر 2012', driverName: 'عماد علي دحان', model: '2012', fuelType: 'ديزل', transportType: 'ركاب', lastOdometer: 130000 },
+  { carNumber: '23317', carName: 'دايهاتسو قلاب موديل 2004', driverName: 'محمدمحسن', model: '2004', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 160000 },
+  { carNumber: '28185', carName: 'دينا متسوبيشي2010', driverName: 'عبد الغني على دحان', model: '2010', fuelType: 'ديزل', transportType: 'ثقيل', lastOdometer: 140000 },
+  { carNumber: '31457', carName: 'لاندكروزر صالون2012', driverName: 'رشاد عبدالحميد', model: '2012', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 115000 },
+  { carNumber: '46383', carName: 'رافور تويوتا 2020', driverName: 'حمدي شريف', model: '2020', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 35000 },
+  { carNumber: '29732', carName: 'لاندكروزر صالون2011', driverName: 'عامرمحمد علي نعمان', model: '2011', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 125000 },
+  { carNumber: '139614', carName: 'رافور تويوتا 2020', driverName: 'وسيم عامر محمد علي', model: '2020', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 42000 },
+  { carNumber: '161777', carName: 'تويوتا رافور 2021', driverName: 'احمد لطفي عبد الحميد', model: '2021', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 28000 },
+  { carNumber: '53665', carName: 'جيب2014', driverName: 'وهيب عبدالحميد', model: '2014', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 92000 },
+  { carNumber: '27750', carName: 'فرتشنار تويوتا 2010', driverName: 'لطفي سعيد علي', model: '2010', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 135000 },
+  { carNumber: '30551', carName: 'فرتشنار تويوتا 2014', driverName: 'عبدالله الوردي', model: '2014', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 88000 },
+  { carNumber: '29015', carName: 'هيلوكس غمارة 2010', driverName: 'ماجد عبده فارع', model: '2010', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 142000 },
+  { carNumber: '13287', carName: 'هيلوكس غمارتين ديزل 2014', driverName: 'مروان الفقية', model: '2014', fuelType: 'ديزل', transportType: 'خفيف', lastOdometer: 99000 },
+  { carNumber: '44972', carName: 'سوزكي جيمني 2015', driverName: 'صابر جواد', model: '2015', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 71000 },
+  { carNumber: '25749', carName: 'هيلوكس غماره  2013', driverName: 'محمد عبد القوي الشوافي', model: '2013', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 108000 },
+  { carNumber: '26519', carName: 'هليوكس غمارتين2008', driverName: 'الخدمات', model: '2008', fuelType: 'بترول', transportType: 'خدمات', lastOdometer: 175000 },
+  { carNumber: '20040', carName: 'هواندي توسان2012', driverName: 'محمدالنعماني', model: '2012', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 118000 },
+  { carNumber: '45551', carName: 'زوكي جمني2013', driverName: 'عبد الله مكرد', model: '2013', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 86000 },
+  { carNumber: '19404', carName: 'باص كوستر 2004', driverName: 'يزيد عبد الواسع', model: '2004', fuelType: 'ديزل', transportType: 'ركاب', lastOdometer: 185000 },
+  { carNumber: '46166', carName: 'دايهاتسو-تريوس', driverName: 'سالم', model: '2013', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 69000 },
+  { carNumber: '34189', carName: 'هواندي توسان 2014', driverName: 'رمزي الماريو', model: '2014', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 94000 },
+  { carNumber: '46379', carName: 'فوشنار 2015', driverName: 'عبدالفتاح درهم', model: '2015', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 78000 },
+  { carNumber: '43166', carName: 'دايهاتسو تريوس 2013', driverName: 'هاني فيصل', model: '2013', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 83000 },
+  { carNumber: '46140', carName: 'باص كوستر  2012 جديد  بدون رقم', driverName: 'جميل قائد سعيد', model: '2012', fuelType: 'ديزل', transportType: 'ركاب', lastOdometer: 120000 },
+  { carNumber: '27949', carName: 'دايهاتسو طويل2010رقم27949', driverName: 'مصطفى المخلافي', model: '2010', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 131000 },
+  { carNumber: '54446', carName: 'هونداي توسان 2020', driverName: 'محمد صادق سليمان', model: '2020', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 38000 },
+  { carNumber: '54825', carName: 'هونداي توسان 2020', driverName: 'اشرف عبد القادر', model: '2020', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 36000 },
+  { carNumber: '43661', carName: 'دايهاتسو تريوس 2015', driverName: 'سالم باوزير', model: '2015', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 67000 },
+  { carNumber: '16501', carName: 'هيلوكس غماره 2014', driverName: 'اشرف محفوظ', model: '2014', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 91000 },
+  { carNumber: '43998', carName: 'تويوتا هيلوكس غمارتين دبل 2021', driverName: 'عبدالرقيب عبدالوهاب', model: '2021', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 29000 },
+  { carNumber: '49039', carName: 'تويوتا فور تشنر 2013', driverName: 'خالدالشراعي', model: '2013', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 102000 },
+  { carNumber: '56989', carName: 'تويوتا فور تشنر 2015', driverName: 'نبيل الشوافي', model: '2015', fuelType: 'بترول', transportType: 'خفيف', lastOdometer: 74000 },
 ];
 
-const DEFAULT_PRICES: PriceConfig = {
-  fuelPricePerLiter: 950,
-  oilPricePerLiter: 3500,
-};
+const INITIAL_USERS: User[] = [
+  { username: 'ميثاق', password: '111', role: 'Admin', carNumber: 'إدارة', driverName: 'ميثاق (المدير)' },
+  ...INITIAL_CARS.map((c) => ({
+    username: c.carNumber,
+    password: '000',
+    role: 'Driver' as Role,
+    carNumber: c.carNumber,
+    driverName: c.driverName,
+  })),
+];
+
+const DEFAULT_STATIONS = ['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي'];
+const DEFAULT_OILS = ['تويوتا', 'ليوكي مولي', 'ناشيونال'];
+const DEFAULT_REGIONS = ['تعز', 'صنعاء', 'عدن', 'الحديدة', 'إب', 'مأرب', 'حضرموت', 'ذمار', 'شهري'];
 
 export default function App() {
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-  const [prices, setPrices] = useState<PriceConfig>(DEFAULT_PRICES);
+  const [cars, setCars] = useState<CarData[]>(INITIAL_CARS);
+  const [prices, setPrices] = useState<PriceConfig>({ fuelPricePerLiter: 950, oilPricePerLiter: 3500 });
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [loginUsername, setLoginUsername] = useState('');
-  const [loginPassword, setLoginPassword] = useState('');
+  const [stations, setStations] = useState<string[]>(DEFAULT_STATIONS);
+  const [oilTypes, setOilTypes] = useState<string[]>(DEFAULT_OILS);
+  const [regions, setRegions] = useState<string[]>(DEFAULT_REGIONS);
 
-  const [currentTab, setCurrentTab] = useState<'requests' | 'inquiries' | 'change_pass' | 'admin_panel'>('requests');
+  const [currentTab, setCurrentTab] = useState<'requests' | 'reports' | 'car_list' | 'add_car' | 'coding' | 'admin_panel'>('requests');
   const [selectedReqType, setSelectedReqType] = useState<RequestType>('محروقات');
 
+  const [requestDate, setRequestDate] = useState(new Date().toISOString().split('T')[0]);
   const [fuelQuantity, setFuelQuantity] = useState('');
-  const [stationName, setStationName] = useState('');
-  const [odometer, setOdometer] = useState('');
+  const [selectedStation, setSelectedStation] = useState(DEFAULT_STATIONS[0]);
+  const [selectedRegion, setSelectedRegion] = useState(DEFAULT_REGIONS[0]);
+  
+  const [selectedOil, setSelectedOil] = useState(DEFAULT_OILS[0]);
+  const [oilQuantity, setOilQuantity] = useState('');
+  const [oilPrice, setOilPrice] = useState('');
+  const [currentOdometer, setCurrentOdometer] = useState('');
+  
   const [reqDetails, setReqDetails] = useState('');
   const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
   const [estimatedCostInput, setEstimatedCostInput] = useState('');
 
-  const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-
-  const [adminTab, setAdminTab] = useState<'manage_requests' | 'pricing' | 'cars'>('manage_requests');
-  const [fuelPriceInput, setFuelPriceInput] = useState('');
-  const [oilPriceInput, setOilPriceInput] = useState('');
-
-  const [newDriverUser, setNewDriverUser] = useState('');
-  const [newDriverName, setNewDriverName] = useState('');
   const [newCarNo, setNewCarNo] = useState('');
+  const [newCarName, setNewCarName] = useState('');
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newModel, setNewModel] = useState('');
+
+  const [newStationInput, setNewStationInput] = useState('');
+
+  const [reportTab, setReportTab] = useState<RequestType>('محروقات');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  const [loginUsername, setLoginUsername] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
 
   useEffect(() => {
     loadAppData();
@@ -98,30 +179,25 @@ export default function App() {
 
   const loadAppData = async () => {
     try {
-      const storedUsers = await AsyncStorage.getItem('@fleet_users');
-      const storedPrices = await AsyncStorage.getItem('@fleet_prices');
-      const storedReqs = await AsyncStorage.getItem('@fleet_requests');
+      const storedUsers = await AsyncStorage.getItem('@fleet_users_v2');
+      const storedCars = await AsyncStorage.getItem('@fleet_cars_v2');
+      const storedReqs = await AsyncStorage.getItem('@fleet_reqs_v2');
 
       if (storedUsers) setUsers(JSON.parse(storedUsers));
-      if (storedPrices) setPrices(JSON.parse(storedPrices));
+      if (storedCars) setCars(JSON.parse(storedCars));
       if (storedReqs) setRequests(JSON.parse(storedReqs));
     } catch (e) {
       console.error(e);
     }
   };
 
-  const saveData = async (updatedUsers?: User[], updatedPrices?: PriceConfig, updatedReqs?: ServiceRequest[]) => {
-    if (updatedUsers) {
-      setUsers(updatedUsers);
-      await AsyncStorage.setItem('@fleet_users', JSON.stringify(updatedUsers));
-    }
-    if (updatedPrices) {
-      setPrices(updatedPrices);
-      await AsyncStorage.setItem('@fleet_prices', JSON.stringify(updatedPrices));
-    }
-    if (updatedReqs) {
-      setRequests(updatedReqs);
-      await AsyncStorage.setItem('@fleet_requests', JSON.stringify(updatedReqs));
+  const saveData = async () => {
+    try {
+      await AsyncStorage.setItem('@fleet_users_v2', JSON.stringify(users));
+      await AsyncStorage.setItem('@fleet_cars_v2', JSON.stringify(cars));
+      await AsyncStorage.setItem('@fleet_reqs_v2', JSON.stringify(requests));
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -141,10 +217,6 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-  };
-
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -157,20 +229,30 @@ export default function App() {
     }
   };
 
+  const getCurrentCar = () => cars.find((c) => c.carNumber === currentUser?.carNumber);
+  const previousOdometerValue = getCurrentCar()?.lastOdometer || 0;
+
   const handleSendRequest = () => {
     if (!currentUser) return;
 
     let total = 0;
-    let unitPrice = 0;
-    const qty = parseFloat(fuelQuantity) || 0;
+    let unitP = 0;
+    let qty = 0;
+    let prevOdo = previousOdometerValue;
+    let currOdo = parseFloat(currentOdometer) || 0;
+    let distance = 0;
 
     if (selectedReqType === 'محروقات') {
-      if (!qty || qty <= 0) {
-        Alert.alert('تنبيه', 'يرجى إدخال كمية المحروقات باللتر');
-        return;
+      qty = parseFloat(fuelQuantity) || 0;
+      unitP = prices.fuelPricePerLiter;
+      total = qty * unitP;
+    } else if (selectedReqType === 'زيوت') {
+      qty = parseFloat(oilQuantity) || 0;
+      unitP = parseFloat(oilPrice) || prices.oilPricePerLiter;
+      total = qty * unitP;
+      if (currOdo > prevOdo) {
+        distance = currOdo - prevOdo;
       }
-      unitPrice = prices.fuelPricePerLiter;
-      total = qty * unitPrice;
     } else {
       total = parseFloat(estimatedCostInput) || 0;
     }
@@ -181,85 +263,82 @@ export default function App() {
       driverName: currentUser.driverName,
       carNumber: currentUser.carNumber,
       type: selectedReqType,
-      stationName: stationName,
+      dateTime: requestDate,
       quantityLiters: qty,
-      unitPrice: unitPrice,
+      unitPrice: unitP,
+      stationName: selectedStation,
+      allocationRegion: selectedRegion,
+      oilType: selectedOil,
+      previousOdometer: prevOdo,
+      currentOdometer: currOdo,
+      distanceTraveled: distance,
       totalCost: total,
       details: reqDetails,
-      odometerReading: parseFloat(odometer) || 0,
       imageUri: attachmentUri || undefined,
-      dateTime: new Date().toLocaleString('ar-YE'),
       status: 'قيد الانتظار',
     };
 
-    const updated = [newReq, ...requests];
-    saveData(undefined, undefined, updated);
+    const updatedReqs = [newReq, ...requests];
+    setRequests(updatedReqs);
 
-    Alert.alert('تم بنجاح', 'تم إرسال الطلب بنجاح إلى الإدارة.');
+    if (currOdo > prevOdo) {
+      const updatedCars = cars.map((c) =>
+        c.carNumber === currentUser.carNumber ? { ...c, lastOdometer: currOdo } : c
+      );
+      setCars(updatedCars);
+    }
+
+    saveData();
+    Alert.alert('تم بنجاح', 'تم إرسال الطلب بنجاح للإدارة.');
     setFuelQuantity('');
-    setStationName('');
-    setOdometer('');
+    setCurrentOdometer('');
     setReqDetails('');
     setAttachmentUri(null);
-    setEstimatedCostInput('');
   };
 
-  const handleChangePassword = () => {
-    if (!currentUser) return;
-    if (currentUser.password !== oldPassword) {
-      Alert.alert('خطأ', 'كلمة المرور القديمة غير صحيحة');
-      return;
-    }
-    if (!newPassword.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال كلمة المرور الجديدة');
+  const handleAddCar = () => {
+    if (!newCarNo.trim() || !newCarName.trim()) {
+      Alert.alert('خطأ', 'يرجى إدخال رقم السيارة واسمها');
       return;
     }
 
-    const updatedUsers = users.map((u) =>
-      u.username === currentUser.username ? { ...u, password: newPassword.trim() } : u
-    );
+    const newCarItem: CarData = {
+      carNumber: newCarNo.trim(),
+      carName: newCarName.trim(),
+      driverName: newDriverName.trim() || 'غير محدد',
+      model: newModel.trim() || '2020',
+      fuelType: 'ديزل',
+      transportType: 'ثقيل',
+      lastOdometer: 0,
+    };
 
-    setCurrentUser({ ...currentUser, password: newPassword.trim() });
-    saveData(updatedUsers, undefined, undefined);
-    Alert.alert('تم', 'تم تغيير كلمة المرور بنجاح');
-    setOldPassword('');
-    setNewPassword('');
-  };
-
-  const handleSavePricing = () => {
-    const newFuelPrice = parseFloat(fuelPriceInput) || prices.fuelPricePerLiter;
-    const newOilPrice = parseFloat(oilPriceInput) || prices.oilPricePerLiter;
-
-    const newPrices = { fuelPricePerLiter: newFuelPrice, oilPricePerLiter: newOilPrice };
-    saveData(undefined, newPrices, undefined);
-    Alert.alert('تم', 'تم تحديث أسعار المحروقات والزيوت بنجاح');
-  };
-
-  const handleAddCarDriver = () => {
-    if (!newDriverUser.trim() || !newCarNo.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال اسم المستخدم ورقم السيارة');
-      return;
-    }
-
-    const newUser: User = {
-      username: newDriverUser.trim(),
+    const newUserItem: User = {
+      username: newCarNo.trim(),
       password: '000',
       role: 'Driver',
       carNumber: newCarNo.trim(),
-      driverName: newDriverName.trim() || `سائق ${newDriverUser}`,
+      driverName: newDriverName.trim() || 'غير محدد',
     };
 
-    saveData([...users, newUser], undefined, undefined);
-    Alert.alert('تم', 'تم إضافة السيارة والسائق بنجاح');
-    setNewDriverUser('');
-    setNewDriverName('');
+    setCars([...cars, newCarItem]);
+    setUsers([...users, newUserItem]);
+    saveData();
+    Alert.alert('تم', 'تم إضافة السيارة والسائق بنجاح.');
     setNewCarNo('');
+    setNewCarName('');
+    setNewDriverName('');
   };
 
-  const handleUpdateReqStatus = (id: string, status: RequestStatus) => {
-    const updated = requests.map((r) => (r.id === id ? { ...r, status } : r));
-    saveData(undefined, undefined, updated);
-  };
+  const filteredRequests = requests.filter((r) => {
+    if (r.type !== reportTab) return false;
+    if (currentUser?.role === 'Driver' && r.carNumber !== currentUser.carNumber) return false;
+    if (fromDate && r.dateTime < fromDate) return false;
+    if (toDate && r.dateTime > toDate) return false;
+    return true;
+  });
+
+  const totalQuantityReport = filteredRequests.reduce((sum, r) => sum + (r.quantityLiters || 0), 0);
+  const totalCostReport = filteredRequests.reduce((sum, r) => sum + r.totalCost, 0);
 
   if (!currentUser) {
     return (
@@ -267,34 +346,27 @@ export default function App() {
         <StatusBar barStyle="dark-content" />
         <ScrollView contentContainerStyle={styles.authScroll}>
           <View style={styles.authBox}>
-            <View style={styles.truckContainer}>
-              <View style={styles.truckCabin}>
-                <Text style={styles.truckWindow}>🚛</Text>
-              </View>
-              <View style={styles.truckBody}>
-                <View style={styles.logoBadge}>
-                  <Text style={styles.logoBadgeText}>YCPD</Text>
-                  <View style={styles.logoSmile} />
-                  <Text style={styles.logoAtlasText}>أطلس</Text>
-                </View>
-              </View>
+            <View style={styles.logoBadge}>
+              <Text style={styles.logoBadgeText}>YCPD</Text>
+              <View style={styles.logoSmile} />
+              <Text style={styles.logoAtlasText}>أطلس</Text>
             </View>
 
-            <Text style={styles.appTitle}>تطبيق السيارات والأسطول</Text>
+            <Text style={styles.appTitle}>نظام إدارة السيارات والأسطول</Text>
             <Text style={styles.appSubTitle}>شركة YCPD - أطلس</Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>اسم المستخدم / الرقم الوظيفي:</Text>
+              <Text style={styles.label}>رقم السيارة (اسم المستخدم):</Text>
               <TextInput
                 style={styles.input}
-                placeholder="أدخل اسم المستخدم"
+                placeholder="أدخل رقم السيارة (مثال: 22618)"
                 value={loginUsername}
                 onChangeText={setLoginUsername}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>كلمة المرور:</Text>
+              <Text style={styles.label}>كلمة المرور (افتراضي 000):</Text>
               <TextInput
                 style={styles.input}
                 placeholder="****"
@@ -313,69 +385,58 @@ export default function App() {
     );
   }
 
-  const userRequests = requests.filter((r) => r.driverUsername === currentUser.username);
-  const totalFuelLiters = userRequests
-    .filter((r) => r.type === 'محروقات' && r.status === 'تمت الموافقة')
-    .reduce((sum, r) => sum + (r.quantityLiters || 0), 0);
-  const totalExpenses = userRequests
-    .filter((r) => r.status === 'تمت الموافقة')
-    .reduce((sum, r) => sum + r.totalCost, 0);
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topInfoBar}>
         <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>رقم السيارة:</Text>
+          <Text style={styles.infoLabel}>السيارة:</Text>
           <Text style={styles.infoValue}>{currentUser.carNumber}</Text>
         </View>
         <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>السائق:</Text>
+          <Text style={styles.infoLabel}>المستخدم / السائق:</Text>
           <Text style={styles.infoValue}>{currentUser.driverName}</Text>
         </View>
-        <TouchableOpacity style={styles.logoutChip} onPress={handleLogout}>
+        <TouchableOpacity style={styles.logoutChip} onPress={() => setCurrentUser(null)}>
           <Text style={styles.logoutChipText}>خروج</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabBar}>
-        {currentUser.role === 'Admin' ? (
-          <TouchableOpacity
-            style={[styles.tabItem, currentTab === 'admin_panel' && styles.activeTabItem]}
-            onPress={() => setCurrentTab('admin_panel')}
-          >
-            <Text style={styles.tabText}>لوحة الإدارة</Text>
-          </TouchableOpacity>
-        ) : (
+      <ScrollView horizontal style={styles.tabBar} showsHorizontalScrollIndicator={false}>
+        <TouchableOpacity style={[styles.tabItem, currentTab === 'requests' && styles.activeTabItem]} onPress={() => setCurrentTab('requests')}>
+          <Text style={styles.tabText}>طلب خدمة</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.tabItem, currentTab === 'reports' && styles.activeTabItem]} onPress={() => setCurrentTab('reports')}>
+          <Text style={styles.tabText}>التقارير والإستعلام</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.tabItem, currentTab === 'car_list' && styles.activeTabItem]} onPress={() => setCurrentTab('car_list')}>
+          <Text style={styles.tabText}>بيانات السيارات</Text>
+        </TouchableOpacity>
+
+        {currentUser.role === 'Admin' && (
           <>
-            <TouchableOpacity
-              style={[styles.tabItem, currentTab === 'requests' && styles.activeTabItem]}
-              onPress={() => setCurrentTab('requests')}
-            >
-              <Text style={styles.tabText}>الطلبات</Text>
+            <TouchableOpacity style={[styles.tabItem, currentTab === 'add_car' && styles.activeTabItem]} onPress={() => setCurrentTab('add_car')}>
+              <Text style={styles.tabText}>إدخال بيانات سيارة</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabItem, currentTab === 'inquiries' && styles.activeTabItem]}
-              onPress={() => setCurrentTab('inquiries')}
-            >
-              <Text style={styles.tabText}>استعلامات</Text>
+
+            <TouchableOpacity style={[styles.tabItem, currentTab === 'coding' && styles.activeTabItem]} onPress={() => setCurrentTab('coding')}>
+              <Text style={styles.tabText}>شاشة التكويد</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabItem, currentTab === 'change_pass' && styles.activeTabItem]}
-              onPress={() => setCurrentTab('change_pass')}
-            >
-              <Text style={styles.tabText}>تغيير السّر</Text>
+
+            <TouchableOpacity style={[styles.tabItem, currentTab === 'admin_panel' && styles.activeTabItem]} onPress={() => setCurrentTab('admin_panel')}>
+              <Text style={styles.tabText}>لوحة الإدارة</Text>
             </TouchableOpacity>
           </>
         )}
-      </View>
+      </ScrollView>
 
       <ScrollView style={styles.content}>
         {currentTab === 'requests' && (
           <View>
             <Text style={styles.sectionHeader}>تقديم طلب جديد</Text>
-            
             <View style={styles.typeSelector}>
-              {(['محروقات', 'زيوت', 'قطع غيار', 'صيانة'] as RequestType[]).map((t) => (
+              {(['محروقات', 'زيوت', 'قطع غيار', 'صيانة', 'تائرات'] as RequestType[]).map((t) => (
                 <TouchableOpacity
                   key={t}
                   style={[styles.typeBtn, selectedReqType === t && styles.activeTypeBtn]}
@@ -387,83 +448,98 @@ export default function App() {
             </View>
 
             <View style={styles.formCard}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>التاريخ:</Text>
+                <TextInput style={styles.input} value={requestDate} onChangeText={setRequestDate} />
+              </View>
+
               {selectedReqType === 'محروقات' && (
                 <>
-                  <Text style={styles.priceNotice}>
-                    سعر اللتر المعتمد حالياً: {prices.fuelPricePerLiter.toLocaleString()} ريال/لتر
-                  </Text>
-                  
+                  <Text style={styles.priceNotice}>سعر اللتر المعتمد: {prices.fuelPricePerLiter} ريال</Text>
+
                   <View style={styles.inputGroup}>
                     <Text style={styles.label}>الكمية باللتر:</Text>
                     <TextInput
                       style={styles.input}
                       keyboardType="numeric"
-                      placeholder="مثال: 50"
+                      placeholder="أدخل الكمية"
                       value={fuelQuantity}
                       onChangeText={setFuelQuantity}
                     />
                   </View>
 
                   <View style={styles.inputGroup}>
-                    <Text style={styles.label}>اسم المحطة:</Text>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="اسم المحطة"
-                      value={stationName}
-                      onChangeText={setStationName}
-                    />
+                    <Text style={styles.label}>اختر المحطة:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {stations.map((st) => (
+                        <TouchableOpacity key={st} style={[styles.chipBtn, selectedStation === st && styles.chipBtnActive]} onPress={() => setSelectedStation(st)}>
+                          <Text style={selectedStation === st ? styles.chipTextActive : styles.chipText}>{st}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>منطقة المخصص:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {regions.map((rg) => (
+                        <TouchableOpacity key={rg} style={[styles.chipBtn, selectedRegion === rg && styles.chipBtnActive]} onPress={() => setSelectedRegion(rg)}>
+                          <Text style={selectedRegion === rg ? styles.chipTextActive : styles.chipText}>{rg}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
                   </View>
 
                   <Text style={styles.calcTotalText}>
-                    الإجمالي التقديري: {((parseFloat(fuelQuantity) || 0) * prices.fuelPricePerLiter).toLocaleString()} ريال
+                    الإجمالي: {((parseFloat(fuelQuantity) || 0) * prices.fuelPricePerLiter).toLocaleString()} ريال
                   </Text>
                 </>
               )}
 
-              {selectedReqType !== 'محروقات' && (
+              {selectedReqType === 'زيوت' && (
+                <>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>نوع الزيت:</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      {oilTypes.map((ot) => (
+                        <TouchableOpacity key={ot} style={[styles.chipBtn, selectedOil === ot && styles.chipBtnActive]} onPress={() => setSelectedOil(ot)}>
+                          <Text style={selectedOil === ot ? styles.chipTextActive : styles.chipText}>{ot}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>الكمية:</Text>
+                    <TextInput style={styles.input} keyboardType="numeric" placeholder="عدد ألتار الزيت" value={oilQuantity} onChangeText={setOilQuantity} />
+                  </View>
+
+                  <View style={styles.odoBox}>
+                    <Text style={styles.label}>العداد السابق (تلقائي): {previousOdometerValue} كم</Text>
+                    <Text style={styles.label}>العداد الحالي:</Text>
+                    <TextInput style={styles.input} keyboardType="numeric" placeholder="قراءة العداد الحالية" value={currentOdometer} onChangeText={setCurrentOdometer} />
+                    <Text style={styles.calcTotalText}>
+                      المسافة المقطوعة: {Math.max(0, (parseFloat(currentOdometer) || 0) - previousOdometerValue)} كم
+                    </Text>
+                  </View>
+                </>
+              )}
+
+              {(selectedReqType === 'قطع غيار' || selectedReqType === 'صيانة' || selectedReqType === 'تائرات') && (
                 <View style={styles.inputGroup}>
                   <Text style={styles.label}>التكلفة التقديرية (ريال):</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="التكلفة بالريال"
-                    value={estimatedCostInput}
-                    onChangeText={setEstimatedCostInput}
-                  />
+                  <TextInput style={styles.input} keyboardType="numeric" placeholder="التكلفة بالريال" value={estimatedCostInput} onChangeText={setEstimatedCostInput} />
                 </View>
               )}
 
               <View style={styles.inputGroup}>
-                <Text style={styles.label}>قراءة العداد (الكرونة / كم):</Text>
-                <TextInput
-                  style={styles.input}
-                  keyboardType="numeric"
-                  placeholder="قراءة العداد الحالية"
-                  value={odometer}
-                  onChangeText={setOdometer}
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>تفاصيل وملاحظات الطلب:</Text>
-                <TextInput
-                  style={[styles.input, { height: 70 }]}
-                  multiline
-                  placeholder="اكتب التفاصيل هنا..."
-                  value={reqDetails}
-                  onChangeText={setReqDetails}
-                />
+                <Text style={styles.label}>تفاصيل وملاحظات:</Text>
+                <TextInput style={[styles.input, { height: 60 }]} multiline placeholder="ملاحظات..." value={reqDetails} onChangeText={setReqDetails} />
               </View>
 
               <TouchableOpacity style={styles.attachBtn} onPress={pickImage}>
-                <Text style={styles.attachBtnText}>
-                  {attachmentUri ? '✔️ تم إرفاق الصورة (اضغط للتغيير)' : '📷 إرفاق صورة الفاتورة / المرفق'}
-                </Text>
+                <Text style={styles.attachBtnText}>{attachmentUri ? '✔️ تم إرفاق الصورة' : '📷 إرفاق صورة الفاتورة / المرفق'}</Text>
               </TouchableOpacity>
-
-              {attachmentUri && (
-                <Image source={{ uri: attachmentUri }} style={styles.previewImage} />
-              )}
 
               <TouchableOpacity style={styles.btnPrimary} onPress={handleSendRequest}>
                 <Text style={styles.btnText}>إرسال الطلب</Text>
@@ -472,197 +548,129 @@ export default function App() {
           </View>
         )}
 
-        {currentTab === 'inquiries' && (
+        {currentTab === 'reports' && (
           <View>
-            <Text style={styles.sectionHeader}>استعلامات المسحوبات والتكاليف</Text>
+            <Text style={styles.sectionHeader}>التقارير والإستعلام</Text>
 
-            <View style={styles.statsRow}>
-              <View style={styles.statBox}>
-                <Text style={styles.statTitle}>إجمالي المحروقات</Text>
-                <Text style={styles.statVal}>{totalFuelLiters.toLocaleString()} لتر</Text>
+            <ScrollView horizontal style={styles.tabBar} showsHorizontalScrollIndicator={false}>
+              {(['محروقات', 'زيوت', 'صيانة', 'قطع غيار', 'تائرات'] as RequestType[]).map((t) => (
+                <TouchableOpacity key={t} style={[styles.typeBtn, reportTab === t && styles.activeTypeBtn]} onPress={() => setReportTab(t)}>
+                  <Text style={[styles.typeBtnText, reportTab === t && styles.activeTypeBtnText]}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <View style={styles.formCard}>
+              <Text style={styles.label}>الفترة الزمنية للاستعلام:</Text>
+              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
+                <TextInput style={[styles.input, { flex: 0.48 }]} placeholder="من YYYY-MM-DD" value={fromDate} onChangeText={setFromDate} />
+                <TextInput style={[styles.input, { flex: 0.48 }]} placeholder="إلى YYYY-MM-DD" value={toDate} onChangeText={setToDate} />
               </View>
-              <View style={styles.statBox}>
-                <Text style={styles.statTitle}>إجمالي المصاريف</Text>
-                <Text style={[styles.statVal, { color: '#2e7d32' }]}>{totalExpenses.toLocaleString()} ر.ي</Text>
+
+              <View style={styles.statsRow}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statTitle}>إجمالي المسحوب</Text>
+                  <Text style={styles.statVal}>{totalQuantityReport.toLocaleString()}</Text>
+                </View>
+                <View style={styles.statBox}>
+                  <Text style={styles.statTitle}>إجمالي التكلفة</Text>
+                  <Text style={[styles.statVal, { color: '#2e7d32' }]}>{totalCostReport.toLocaleString()} ر.ي</Text>
+                </View>
               </View>
             </View>
 
-            <Text style={styles.sectionHeader}>سجل طلباتي السابق</Text>
-            {userRequests.map((r) => (
+            <Text style={styles.sectionHeader}>السجل التفصيلي</Text>
+            {filteredRequests.map((r) => (
               <View key={r.id} style={styles.reqCard}>
-                <View style={styles.reqHeader}>
-                  <Text style={styles.reqType}>{r.type}</Text>
-                  <Text style={[styles.statusBadge, r.status === 'تمت الموافقة' ? styles.statusApproved : r.status === 'مرفوض' ? styles.statusRejected : styles.statusPending]}>
-                    {r.status}
-                  </Text>
-                </View>
-                <Text style={styles.reqDetail}>التاريخ: {r.dateTime}</Text>
-                {r.type === 'محروقات' && (
-                  <Text style={styles.reqDetail}>الكمية: {r.quantityLiters} لتر (المحطة: {r.stationName || 'غير محدد'})</Text>
-                )}
-                <Text style={styles.reqDetail}>المبلغ: {r.totalCost.toLocaleString()} ريال</Text>
-                <Text style={styles.reqDetail}>قراءة العداد: {r.odometerReading} كم</Text>
-                {r.details ? <Text style={styles.reqDetail}>ملاحظات: {r.details}</Text> : null}
+                <Text style={styles.cardTitle}>السيارة: {r.carNumber} | السائق: {r.driverName}</Text>
+                <Text style={styles.reqDetail}>التاريخ: {r.dateTime} | النوع: {r.type}</Text>
+                {r.type === 'محروقات' && <Text style={styles.reqDetail}>الكمية: {r.quantityLiters} لتر | المحطة: {r.stationName} | المخصص: {r.allocationRegion}</Text>}
+                {r.type === 'زيوت' && <Text style={styles.reqDetail}>نوع الزيت: {r.oilType} | المسافة المقطوعة: {r.distanceTraveled} كم</Text>}
+                <Text style={styles.reqDetail}>المبلغ: {r.totalCost.toLocaleString()} ريال | الحالة: {r.status}</Text>
               </View>
             ))}
           </View>
         )}
 
-        {currentTab === 'change_pass' && (
+        {currentTab === 'car_list' && (
+          <View>
+            <Text style={styles.sectionHeader}>بيانات جميع سيارات الأسطول</Text>
+            {cars.map((c) => (
+              <View key={c.carNumber} style={styles.reqCard}>
+                <Text style={styles.cardTitle}>{c.carName}</Text>
+                <Text style={styles.reqDetail}>رقم السيارة: {c.carNumber} | السائق: {c.driverName}</Text>
+                <Text style={styles.reqDetail}>الموديل: {c.model} | الوقود: {c.fuelType} | نوع النقل: {c.transportType}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {currentTab === 'add_car' && currentUser.role === 'Admin' && (
           <View style={styles.formCard}>
-            <Text style={styles.sectionHeader}>تغيير كلمة المرور الخاصة بك</Text>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>كلمة المرور الحالية:</Text>
-              <TextInput
-                style={styles.input}
-                secureTextEntry
-                value={oldPassword}
-                onChangeText={setOldPassword}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>كلمة المرور الجديدة:</Text>
-              <TextInput
-                style={styles.input}
-                secureTextEntry
-                value={newPassword}
-                onChangeText={setNewPassword}
-              />
-            </View>
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleChangePassword}>
-              <Text style={styles.btnText}>حفظ كلمة المرور الجديدة</Text>
+            <Text style={styles.sectionHeader}>إدخال بيانات سيارة جديدة</Text>
+            <TextInput style={styles.input} placeholder="رقم السيارة" value={newCarNo} onChangeText={setNewCarNo} />
+            <TextInput style={styles.input} placeholder="اسم السيارة ووصفها" value={newCarName} onChangeText={setNewCarName} />
+            <TextInput style={styles.input} placeholder="اسم السائق" value={newDriverName} onChangeText={setNewDriverName} />
+            <TextInput style={styles.input} placeholder="الموديل (مثال: 2020)" value={newModel} onChangeText={setNewModel} />
+            <TouchableOpacity style={styles.btnPrimary} onPress={handleAddCar}>
+              <Text style={styles.btnText}>حفظ السيارة في النظام</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {currentTab === 'coding' && currentUser.role === 'Admin' && (
+          <View style={styles.formCard}>
+            <Text style={styles.sectionHeader}>شاشة التكويد وإدارة الثوابت</Text>
+            <Text style={styles.label}>تكويد محطات الوقود:</Text>
+            <View style={{ flexDirection: 'row-reverse' }}>
+              <TextInput style={[styles.input, { flex: 1 }]} placeholder="اسم المحطة الجديد" value={newStationInput} onChangeText={setNewStationInput} />
+              <TouchableOpacity
+                style={styles.addSmallBtn}
+                onPress={() => {
+                  if (newStationInput) {
+                    setStations([...stations, newStationInput]);
+                    setNewStationInput('');
+                    saveData();
+                  }
+                }}
+              >
+                <Text style={styles.btnText}>إضافة</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
         {currentTab === 'admin_panel' && currentUser.role === 'Admin' && (
           <View>
-            <View style={styles.adminSubNav}>
-              <TouchableOpacity
-                style={[styles.adminNavBtn, adminTab === 'manage_requests' && styles.activeAdminNav]}
-                onPress={() => setAdminTab('manage_requests')}
-              >
-                <Text style={styles.adminNavText}>إدارة الطلبات</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.adminNavBtn, adminTab === 'pricing' && styles.activeAdminNav]}
-                onPress={() => setAdminTab('pricing')}
-              >
-                <Text style={styles.adminNavText}>تكويد الأسعار</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.adminNavBtn, adminTab === 'cars' && styles.activeAdminNav]}
-                onPress={() => setAdminTab('cars')}
-              >
-                <Text style={styles.adminNavText}>السيارات والسائقين</Text>
-              </TouchableOpacity>
-            </View>
-
-            {adminTab === 'manage_requests' && (
-              <View>
-                <Text style={styles.sectionHeader}>طلبات السيارات الواردة</Text>
-                {requests.map((r) => (
-                  <View key={r.id} style={styles.reqCard}>
-                    <Text style={styles.cardTitle}>السائق: {r.driverName} ({r.carNumber})</Text>
-                    <Text style={styles.reqDetail}>الطلب: {r.type} | {r.dateTime}</Text>
-                    {r.type === 'محروقات' && (
-                      <Text style={styles.reqDetail}>الكمية: {r.quantityLiters} لتر × {r.unitPrice} ريال</Text>
-                    )}
-                    <Text style={styles.reqDetail}>إجمالي المبلغ: {r.totalCost.toLocaleString()} ريال</Text>
-                    <Text style={styles.reqDetail}>عداد السيارة: {r.odometerReading} كم</Text>
-                    {r.details ? <Text style={styles.reqDetail}>ملاحظات: {r.details}</Text> : null}
-                    
-                    {r.imageUri && (
-                      <Image source={{ uri: r.imageUri }} style={styles.previewImage} />
-                    )}
-
-                    <Text style={styles.reqDetail}>الحالة: {r.status}</Text>
-                    
-                    <View style={styles.actionRow}>
-                      <TouchableOpacity
-                        style={[styles.smallBtn, { backgroundColor: '#2e7d32' }]}
-                        onPress={() => handleUpdateReqStatus(r.id, 'تمت الموافقة')}
-                      >
-                        <Text style={styles.btnText}>موافقة</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.smallBtn, { backgroundColor: '#c62828' }]}
-                        onPress={() => handleUpdateReqStatus(r.id, 'مرفوض')}
-                      >
-                        <Text style={styles.btnText}>رفض</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-
-            {adminTab === 'pricing' && (
-              <View style={styles.formCard}>
-                <Text style={styles.sectionHeader}>شاشة تكويد وتعديل الأسعار</Text>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>سعر لتر المحروقات الحالي (ريال): {prices.fuelPricePerLiter}</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="أدخل السعر الجديد للتر"
-                    value={fuelPriceInput}
-                    onChangeText={setFuelPriceInput}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>سعر لتر الزيت الحالي (ريال): {prices.oilPricePerLiter}</Text>
-                  <TextInput
-                    style={styles.input}
-                    keyboardType="numeric"
-                    placeholder="أدخل سعر الزيت الجديد"
-                    value={oilPriceInput}
-                    onChangeText={setOilPriceInput}
-                  />
-                </View>
-
-                <TouchableOpacity style={styles.btnPrimary} onPress={handleSavePricing}>
-                  <Text style={styles.btnText}>تحديث الأسعار في النظام</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-
-            {adminTab === 'cars' && (
-              <View>
-                <View style={styles.formCard}>
-                  <Text style={styles.sectionHeader}>إضافة سيارة وسائق جديد</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="اسم المستخدم (مثال: 55210)"
-                    value={newDriverUser}
-                    onChangeText={setNewDriverUser}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="اسم السائق"
-                    value={newDriverName}
-                    onChangeText={setNewDriverName}
-                  />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="رقم لوحة السيارة"
-                    value={newCarNo}
-                    onChangeText={setNewCarNo}
-                  />
-                  <TouchableOpacity style={styles.btnPrimary} onPress={handleAddCarDriver}>
-                    <Text style={styles.btnText}>إضافة النظام</Text>
+            <Text style={styles.sectionHeader}>طلبات الخدمات الواردة للاعتماد</Text>
+            {requests.map((r) => (
+              <View key={r.id} style={styles.reqCard}>
+                <Text style={styles.cardTitle}>السائق: {r.driverName} ({r.carNumber})</Text>
+                <Text style={styles.reqDetail}>نوع الطلب: {r.type} | التاريخ: {r.dateTime}</Text>
+                <Text style={styles.reqDetail}>إجمالي المبلغ: {r.totalCost.toLocaleString()} ريال</Text>
+                <Text style={styles.reqDetail}>الحالة: {r.status}</Text>
+                <View style={styles.actionRow}>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, { backgroundColor: '#2e7d32' }]}
+                    onPress={() => {
+                      setRequests(requests.map((item) => (item.id === r.id ? { ...item, status: 'تمت الموافقة' } : item)));
+                      saveData();
+                    }}
+                  >
+                    <Text style={styles.btnText}>موافقة</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.smallBtn, { backgroundColor: '#c62828' }]}
+                    onPress={() => {
+                      setRequests(requests.map((item) => (item.id === r.id ? { ...item, status: 'مرفوض' } : item)));
+                      saveData();
+                    }}
+                  >
+                    <Text style={styles.btnText}>رفض</Text>
                   </TouchableOpacity>
                 </View>
-
-                <Text style={styles.sectionHeader}>قائمة السيارات والسائقين المسجلين</Text>
-                {users.map((u) => (
-                  <View key={u.username} style={styles.userRow}>
-                    <Text style={styles.userRowText}>{u.driverName} | سيارة: {u.carNumber} (مستخدم: {u.username})</Text>
-                  </View>
-                ))}
               </View>
-            )}
+            ))}
           </View>
         )}
       </ScrollView>
@@ -674,63 +682,52 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f9' },
   authScroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
   authBox: { backgroundColor: '#ffffff', borderRadius: 15, padding: 20, elevation: 4, alignItems: 'center' },
-  truckContainer: { flexDirection: 'row-reverse', alignItems: 'center', marginBottom: 15 },
-  truckCabin: { width: 50, height: 50, backgroundColor: '#1565c0', borderTopLeftRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  truckWindow: { fontSize: 24 },
-  truckBody: { width: 140, height: 70, backgroundColor: '#0d47a1', borderRadius: 8, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#000' },
-  logoBadge: { backgroundColor: '#fff', borderRadius: 30, paddingHorizontal: 12, paddingVertical: 4, alignItems: 'center', borderWidth: 2, borderColor: '#000' },
-  logoBadgeText: { fontWeight: 'bold', fontSize: 14, color: '#000' },
-  logoSmile: { width: 25, height: 8, borderBottomWidth: 3, borderBottomColor: '#d32f2f', borderRadius: 10 },
-  logoAtlasText: { fontSize: 12, fontWeight: 'bold', color: '#000' },
-  appTitle: { fontSize: 22, fontWeight: 'bold', color: '#0d47a1', marginTop: 10 },
-  appSubTitle: { fontSize: 14, color: '#666', marginBottom: 20 },
-  inputGroup: { width: '100%', marginBottom: 12 },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#333', marginBottom: 4, textAlign: 'right' },
-  input: { backgroundColor: '#f0f4f8', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, textAlign: 'right', borderWidth: 1, borderColor: '#ccc', marginBottom: 8 },
+  logoBadge: { backgroundColor: '#fff', borderRadius: 30, paddingHorizontal: 20, paddingVertical: 8, alignItems: 'center', borderWidth: 2, borderColor: '#000', marginBottom: 15 },
+  logoBadgeText: { fontWeight: 'bold', fontSize: 18, color: '#000' },
+  logoSmile: { width: 35, height: 10, borderBottomWidth: 4, borderBottomColor: '#d32f2f', borderRadius: 10 },
+  logoAtlasText: { fontSize: 14, fontWeight: 'bold', color: '#000' },
+  appTitle: { fontSize: 20, fontWeight: 'bold', color: '#0d47a1', marginTop: 10 },
+  appSubTitle: { fontSize: 13, color: '#666', marginBottom: 20 },
+  inputGroup: { width: '100%', marginBottom: 10 },
+  label: { fontSize: 13, fontWeight: 'bold', color: '#333', marginBottom: 4, textAlign: 'right' },
+  input: { backgroundColor: '#f0f4f8', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, textAlign: 'right', borderWidth: 1, borderColor: '#ccc', marginBottom: 6 },
   btnPrimary: { backgroundColor: '#1565c0', borderRadius: 8, paddingVertical: 12, width: '100%', alignItems: 'center', marginTop: 10 },
-  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  topInfoBar: { backgroundColor: '#0d47a1', padding: 12, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
+  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
+  topInfoBar: { backgroundColor: '#0d47a1', padding: 10, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
   infoCol: { alignItems: 'flex-start' },
-  infoLabel: { color: '#bbdefb', fontSize: 12 },
-  infoValue: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
-  logoutChip: { backgroundColor: '#c62828', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15 },
-  logoutChipText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
-  tabBar: { flexDirection: 'row-reverse', backgroundColor: '#fff', elevation: 2 },
-  tabItem: { flex: 1, paddingVertical: 12, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
+  infoLabel: { color: '#bbdefb', fontSize: 11 },
+  infoValue: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
+  logoutChip: { backgroundColor: '#c62828', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  logoutChipText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
+  tabBar: { flexDirection: 'row-reverse', backgroundColor: '#fff', elevation: 2, paddingVertical: 5 },
+  tabItem: { paddingHorizontal: 15, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   activeTabItem: { borderBottomColor: '#1565c0' },
-  tabText: { fontWeight: 'bold', color: '#333' },
-  content: { flex: 1, padding: 15 },
-  sectionHeader: { fontSize: 18, fontWeight: 'bold', color: '#0d47a1', marginVertical: 10, textAlign: 'right' },
-  typeSelector: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 },
-  typeBtn: { flex: 1, backgroundColor: '#e0e0e0', paddingVertical: 8, marginHorizontal: 2, borderRadius: 6, alignItems: 'center' },
+  tabText: { fontWeight: 'bold', color: '#333', fontSize: 13 },
+  content: { flex: 1, padding: 12 },
+  sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1', marginVertical: 8, textAlign: 'right' },
+  typeSelector: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 },
+  typeBtn: { flex: 1, backgroundColor: '#e0e0e0', paddingVertical: 6, marginHorizontal: 2, borderRadius: 6, alignItems: 'center' },
   activeTypeBtn: { backgroundColor: '#1565c0' },
-  typeBtnText: { fontSize: 12, fontWeight: 'bold', color: '#333' },
+  typeBtnText: { fontSize: 11, fontWeight: 'bold', color: '#333' },
   activeTypeBtnText: { color: '#fff' },
-  formCard: { backgroundColor: '#fff', borderRadius: 10, padding: 15, elevation: 2 },
-  priceNotice: { color: '#d32f2f', fontWeight: 'bold', marginBottom: 10, textAlign: 'right' },
-  calcTotalText: { fontSize: 16, fontWeight: 'bold', color: '#2e7d32', marginVertical: 8, textAlign: 'right' },
-  attachBtn: { backgroundColor: '#e3f2fd', padding: 12, borderRadius: 8, alignItems: 'center', marginVertical: 10, borderWidth: 1, borderColor: '#90caf9' },
-  attachBtnText: { color: '#1565c0', fontWeight: 'bold' },
-  previewImage: { width: '100%', height: 150, borderRadius: 8, marginVertical: 10 },
-  statsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 },
-  statBox: { flex: 0.48, backgroundColor: '#fff', borderRadius: 8, padding: 12, alignItems: 'center', elevation: 2 },
-  statTitle: { fontSize: 12, color: '#666' },
-  statVal: { fontSize: 18, fontWeight: 'bold', color: '#0d47a1', marginTop: 4 },
-  reqCard: { backgroundColor: '#fff', borderRadius: 8, padding: 12, marginBottom: 10, elevation: 2 },
-  reqHeader: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 6 },
-  reqType: { fontWeight: 'bold', fontSize: 16, color: '#0d47a1' },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, color: '#fff', fontSize: 12, fontWeight: 'bold' },
-  statusPending: { backgroundColor: '#f57c00' },
-  statusApproved: { backgroundColor: '#388e3c' },
-  statusRejected: { backgroundColor: '#d32f2f' },
-  reqDetail: { textAlign: 'right', color: '#444', marginBottom: 3 },
-  adminSubNav: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 15 },
-  adminNavBtn: { flex: 1, backgroundColor: '#fff', paddingVertical: 8, marginHorizontal: 2, borderRadius: 6, alignItems: 'center', elevation: 1 },
-  activeAdminNav: { backgroundColor: '#0d47a1' },
-  adminNavText: { fontWeight: 'bold', color: '#333', fontSize: 12 },
-  cardTitle: { fontWeight: 'bold', fontSize: 15, textAlign: 'right', marginBottom: 5 },
-  actionRow: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginTop: 10 },
-  smallBtn: { paddingHorizontal: 20, paddingVertical: 6, borderRadius: 6 },
-  userRow: { backgroundColor: '#fff', padding: 12, borderRadius: 6, marginBottom: 6 },
-  userRowText: { textAlign: 'right', fontSize: 14 },
+  formCard: { backgroundColor: '#fff', borderRadius: 10, padding: 12, elevation: 2, marginBottom: 15 },
+  priceNotice: { color: '#d32f2f', fontWeight: 'bold', marginBottom: 8, textAlign: 'right', fontSize: 12 },
+  calcTotalText: { fontSize: 14, fontWeight: 'bold', color: '#2e7d32', marginVertical: 6, textAlign: 'right' },
+  chipBtn: { backgroundColor: '#e0e0e0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, marginRight: 6, marginBottom: 6 },
+  chipBtnActive: { backgroundColor: '#1565c0' },
+  chipText: { fontSize: 12, color: '#333' },
+  chipTextActive: { fontSize: 12, color: '#fff', fontWeight: 'bold' },
+  odoBox: { backgroundColor: '#e8f5e9', padding: 10, borderRadius: 8, marginVertical: 8 },
+  attachBtn: { backgroundColor: '#e3f2fd', padding: 10, borderRadius: 8, alignItems: 'center', marginVertical: 8, borderWidth: 1, borderColor: '#90caf9' },
+  attachBtnText: { color: '#1565c0', fontWeight: 'bold', fontSize: 13 },
+  statsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 10 },
+  statBox: { flex: 0.48, backgroundColor: '#f5f5f5', borderRadius: 8, padding: 10, alignItems: 'center' },
+  statTitle: { fontSize: 11, color: '#666' },
+  statVal: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1', marginTop: 2 },
+  reqCard: { backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 8, elevation: 2 },
+  cardTitle: { fontWeight: 'bold', fontSize: 14, textAlign: 'right', marginBottom: 4, color: '#0d47a1' },
+  reqDetail: { textAlign: 'right', color: '#444', marginBottom: 2, fontSize: 12 },
+  addSmallBtn: { backgroundColor: '#2e7d32', paddingHorizontal: 15, justifyContent: 'center', borderRadius: 8, marginRight: 5 },
+  actionRow: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginTop: 8 },
+  smallBtn: { paddingHorizontal: 15, paddingVertical: 5, borderRadius: 6 },
 });
