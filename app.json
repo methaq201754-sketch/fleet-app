@@ -4,10 +4,10 @@
     "slug": "ycpd-fleet-app",
     "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0d47a1"
     },
