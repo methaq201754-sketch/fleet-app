@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Fleet App",
-    "slug": "fleet-management-app",
+    "name": "السيارات - أطلس",
+    "slug": "ycpd-fleet-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0d47a1"
     },
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "package": "com.company.fleetmanagement"
+      "package": "com.atlas.fleet.ycpd"
     }
   }
 }
