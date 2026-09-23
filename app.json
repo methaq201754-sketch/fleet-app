@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "FleetApp",
-    "slug": "fleet-app",
+    "name": "Fleet App",
+    "slug": "fleet-management-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
@@ -13,7 +13,7 @@
       "supportsTablet": true
     },
     "android": {
-      "package": "com.fleetapp.app"
+      "package": "com.company.fleetmanagement"
     }
   }
 }
