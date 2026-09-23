@@ -27,8 +27,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Prebuild React Native App
-        run: npx expo prebuild --platform android --clean
+      - name: Clean & Prebuild React Native App
+        run: |
+          rm -rf android
+          npx expo prebuild --platform android --clean
 
       - name: Build Android APK
         run: |
@@ -39,5 +41,5 @@ jobs:
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FleetApp-Release-APK
+          name: AtlasFleet-APK
           path: android/app/build/outputs/apk/release/app-release.apk
