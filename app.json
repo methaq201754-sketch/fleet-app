@@ -16,10 +16,11 @@
     },
     "android": {
       "package": "com.atlas.fleet.ycpd",
-      "versionCode": 7,
-      "minSdkVersion": 21,
-      "targetSdkVersion": 34,
-      "buildToolsVersion": "34.0.0"
+      "versionCode": 8,
+      "adaptiveIcon": {
+        "foregroundImage": "./icon.png",
+        "backgroundColor": "#0d47a1"
+      }
     }
   }
 }
