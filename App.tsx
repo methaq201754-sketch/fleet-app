@@ -9,7 +9,7 @@ import {
   Alert,
   SafeAreaView,
   StatusBar,
-  Image,
+  Modal,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -25,9 +25,15 @@ interface CarData {
   model: string;
   fuelType: 'ديزل' | 'بترول';
   transportType: 'ثقيل' | 'خفيف' | 'ركاب' | 'خدمات';
-  chassisNumber?: string;
-  engineNumber?: string;
   lastOdometer: number;
+}
+
+interface DriverInfo {
+  id: string;
+  driverName: string;
+  phone: string;
+  jobTitle: string;
+  carNumber: string;
 }
 
 interface User {
@@ -38,11 +44,6 @@ interface User {
   driverName: string;
 }
 
-interface PriceConfig {
-  fuelPricePerLiter: number;
-  oilPricePerLiter: number;
-}
-
 interface ServiceRequest {
   id: string;
   driverUsername: string;
@@ -50,23 +51,16 @@ interface ServiceRequest {
   carNumber: string;
   type: RequestType;
   dateTime: string;
-  
   quantityLiters?: number;
   unitPrice?: number;
   stationName?: string;
   allocationRegion?: string;
-  
   oilType?: string;
   previousOdometer?: number;
   currentOdometer?: number;
   distanceTraveled?: number;
-  
-  maintenanceReason?: string;
-  sparePartName?: string;
-  
   totalCost: number;
   details?: string;
-  imageUri?: string;
   status: RequestStatus;
 }
 
@@ -117,7 +111,7 @@ const INITIAL_CARS: CarData[] = [
 ];
 
 const INITIAL_USERS: User[] = [
-  { username: 'ميثاق', password: '111', role: 'Admin', carNumber: 'إدارة', driverName: 'ميثاق (المدير)' },
+  { username: 'ميثاق', password: '111', role: 'Admin', carNumber: 'إدارة', driverName: 'ميثاق عبده' },
   ...INITIAL_CARS.map((c) => ({
     username: c.carNumber,
     password: '000',
@@ -127,607 +121,485 @@ const INITIAL_USERS: User[] = [
   })),
 ];
 
-const DEFAULT_STATIONS = ['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي'];
-const DEFAULT_OILS = ['تويوتا', 'ليوكي مولي', 'ناشيونال'];
-const DEFAULT_REGIONS = ['تعز', 'صنعاء', 'عدن', 'الحديدة', 'إب', 'مأرب', 'حضرموت', 'ذمار', 'شهري'];
-
 export default function App() {
   const [users, setUsers] = useState<User[]>(INITIAL_USERS);
   const [cars, setCars] = useState<CarData[]>(INITIAL_CARS);
-  const [prices, setPrices] = useState<PriceConfig>({ fuelPricePerLiter: 950, oilPricePerLiter: 3500 });
+  const [drivers, setDrivers] = useState<DriverInfo[]>(
+    INITIAL_CARS.map((c, idx) => ({
+      id: idx.toString(),
+      driverName: c.driverName,
+      phone: '770000000',
+      jobTitle: 'سائق معدة / نقل',
+      carNumber: c.carNumber,
+    }))
+  );
+
+  const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
+  const [regions, setRegions] = useState<string[]>(['تعز', 'صنعاء', 'عدن', 'الحديدة', 'إب', 'مأرب', 'حضرموت', 'شهري']);
+  const [spareParts, setSpareParts] = useState<string[]>(['فلاتر هواء', 'فلاتر زيت', 'أقمشة فرامل', 'سيور']);
+  const [oilTypes, setOilTypes] = useState<string[]>(['تويوتا', 'ليوكي مولي', 'ناشيونال']);
+  const [batteries, setBatteries] = useState<string[]>(['بطارية هانكوك 70A', 'بطارية AC Delco 100A']);
+  const [tires, setTires] = useState<string[]>(['إطارات يوكوهاما 16', 'إطارات ميشلان 22.5']);
+
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  const [stations, setStations] = useState<string[]>(DEFAULT_STATIONS);
-  const [oilTypes, setOilTypes] = useState<string[]>(DEFAULT_OILS);
-  const [regions, setRegions] = useState<string[]>(DEFAULT_REGIONS);
+  const [currentTab, setCurrentTab] = useState<'home' | 'request_form' | 'reports' | 'cars' | 'drivers' | 'coding' | 'admin'>('home');
+  const [requestType, setRequestType] = useState<RequestType>('محروقات');
 
-  const [currentTab, setCurrentTab] = useState<'requests' | 'reports' | 'car_list' | 'add_car' | 'coding' | 'admin_panel'>('requests');
-  const [selectedReqType, setSelectedReqType] = useState<RequestType>('محروقات');
+  // عناصر التحكم بالقوائم المنسدلة
+  const [pickerModalVisible, setPickerModalVisible] = useState(false);
+  const [pickerItems, setPickerItems] = useState<string[]>([]);
+  const [onSelectPicker, setOnSelectPicker] = useState<(val: string) => void>(() => {});
 
-  const [requestDate, setRequestDate] = useState(new Date().toISOString().split('T')[0]);
-  const [fuelQuantity, setFuelQuantity] = useState('');
-  const [selectedStation, setSelectedStation] = useState(DEFAULT_STATIONS[0]);
-  const [selectedRegion, setSelectedRegion] = useState(DEFAULT_REGIONS[0]);
-  
-  const [selectedOil, setSelectedOil] = useState(DEFAULT_OILS[0]);
-  const [oilQuantity, setOilQuantity] = useState('');
-  const [oilPrice, setOilPrice] = useState('');
+  // مدخلات النموذج
+  const [requestDate, setRequestDate] = useState('2026-09-24');
+  const [selectedStation, setSelectedStation] = useState('محطة الزبيدي');
+  const [selectedRegion, setSelectedRegion] = useState('تعز');
+  const [selectedOil, setSelectedOil] = useState('تويوتا');
+  const [quantity, setQuantity] = useState('');
   const [currentOdometer, setCurrentOdometer] = useState('');
-  
-  const [reqDetails, setReqDetails] = useState('');
-  const [attachmentUri, setAttachmentUri] = useState<string | null>(null);
-  const [estimatedCostInput, setEstimatedCostInput] = useState('');
+  const [details, setDetails] = useState('');
 
-  const [newCarNo, setNewCarNo] = useState('');
-  const [newCarName, setNewCarName] = useState('');
-  const [newDriverName, setNewDriverName] = useState('');
-  const [newModel, setNewModel] = useState('');
+  // مدخلات السائق الجديد
+  const [dName, setDName] = useState('');
+  const [dPhone, setDPhone] = useState('');
+  const [dJob, setDJob] = useState('');
+  const [dCarNo, setDCarNo] = useState('');
 
-  const [newStationInput, setNewStationInput] = useState('');
+  // مدخلات التكويد
+  const [codingActiveType, setCodingActiveType] = useState<string | null>(null);
+  const [newCodingInput, setNewCodingInput] = useState('');
 
-  const [reportTab, setReportTab] = useState<RequestType>('محروقات');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
-
+  // تسجيل الدخول
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  useEffect(() => {
-    loadAppData();
-  }, []);
-
-  const loadAppData = async () => {
-    try {
-      const storedUsers = await AsyncStorage.getItem('@fleet_users_v2');
-      const storedCars = await AsyncStorage.getItem('@fleet_cars_v2');
-      const storedReqs = await AsyncStorage.getItem('@fleet_reqs_v2');
-
-      if (storedUsers) setUsers(JSON.parse(storedUsers));
-      if (storedCars) setCars(JSON.parse(storedCars));
-      if (storedReqs) setRequests(JSON.parse(storedReqs));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  const saveData = async () => {
-    try {
-      await AsyncStorage.setItem('@fleet_users_v2', JSON.stringify(users));
-      await AsyncStorage.setItem('@fleet_cars_v2', JSON.stringify(cars));
-      await AsyncStorage.setItem('@fleet_reqs_v2', JSON.stringify(requests));
-    } catch (e) {
-      console.error(e);
-    }
+  const openPicker = (items: string[], onSelect: (val: string) => void) => {
+    setPickerItems(items);
+    setOnSelectPicker(() => onSelect);
+    setPickerModalVisible(true);
   };
 
   const handleLogin = () => {
-    const user = users.find(
-      (u) => u.username.trim() === loginUsername.trim() && u.password.trim() === loginPassword.trim()
-    );
-
+    const user = users.find((u) => u.username.trim() === loginUsername.trim() && u.password.trim() === loginPassword.trim());
     if (user) {
       setCurrentUser(user);
-      setLoginUsername('');
-      setLoginPassword('');
-      if (user.role === 'Admin') setCurrentTab('admin_panel');
-      else setCurrentTab('requests');
     } else {
-      Alert.alert('خطأ', 'اسم المستخدم أو كلمة المرور غير صحيحة');
+      Alert.alert('خطأ', 'بيانات الدخول غير صحيحة');
     }
   };
-
-  const pickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.7,
-    });
-
-    if (!result.canceled && result.assets[0].uri) {
-      setAttachmentUri(result.assets[0].uri);
-    }
-  };
-
-  const getCurrentCar = () => cars.find((c) => c.carNumber === currentUser?.carNumber);
-  const previousOdometerValue = getCurrentCar()?.lastOdometer || 0;
 
   const handleSendRequest = () => {
     if (!currentUser) return;
-
-    let total = 0;
-    let unitP = 0;
-    let qty = 0;
-    let prevOdo = previousOdometerValue;
-    let currOdo = parseFloat(currentOdometer) || 0;
-    let distance = 0;
-
-    if (selectedReqType === 'محروقات') {
-      qty = parseFloat(fuelQuantity) || 0;
-      unitP = prices.fuelPricePerLiter;
-      total = qty * unitP;
-    } else if (selectedReqType === 'زيوت') {
-      qty = parseFloat(oilQuantity) || 0;
-      unitP = parseFloat(oilPrice) || prices.oilPricePerLiter;
-      total = qty * unitP;
-      if (currOdo > prevOdo) {
-        distance = currOdo - prevOdo;
-      }
-    } else {
-      total = parseFloat(estimatedCostInput) || 0;
-    }
+    const qty = parseFloat(quantity) || 0;
+    const cost = qty * 950;
 
     const newReq: ServiceRequest = {
       id: Date.now().toString(),
       driverUsername: currentUser.username,
       driverName: currentUser.driverName,
       carNumber: currentUser.carNumber,
-      type: selectedReqType,
+      type: requestType,
       dateTime: requestDate,
       quantityLiters: qty,
-      unitPrice: unitP,
       stationName: selectedStation,
       allocationRegion: selectedRegion,
       oilType: selectedOil,
-      previousOdometer: prevOdo,
-      currentOdometer: currOdo,
-      distanceTraveled: distance,
-      totalCost: total,
-      details: reqDetails,
-      imageUri: attachmentUri || undefined,
+      totalCost: cost,
+      details: details,
       status: 'قيد الانتظار',
     };
 
-    const updatedReqs = [newReq, ...requests];
-    setRequests(updatedReqs);
-
-    if (currOdo > prevOdo) {
-      const updatedCars = cars.map((c) =>
-        c.carNumber === currentUser.carNumber ? { ...c, lastOdometer: currOdo } : c
-      );
-      setCars(updatedCars);
-    }
-
-    saveData();
-    Alert.alert('تم بنجاح', 'تم إرسال الطلب بنجاح للإدارة.');
-    setFuelQuantity('');
-    setCurrentOdometer('');
-    setReqDetails('');
-    setAttachmentUri(null);
+    setRequests([newReq, ...requests]);
+    Alert.alert('تم بنجاح', 'تم إرسال الطلب إلى الإدارة');
+    setQuantity('');
+    setDetails('');
+    setCurrentTab('home');
   };
 
-  const handleAddCar = () => {
-    if (!newCarNo.trim() || !newCarName.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال رقم السيارة واسمها');
+  const handleAddDriver = () => {
+    if (!dName || !dPhone) {
+      Alert.alert('تنبيه', 'يرجى إدخال اسم السائق ورقم الهاتف');
       return;
     }
-
-    const newCarItem: CarData = {
-      carNumber: newCarNo.trim(),
-      carName: newCarName.trim(),
-      driverName: newDriverName.trim() || 'غير محدد',
-      model: newModel.trim() || '2020',
-      fuelType: 'ديزل',
-      transportType: 'ثقيل',
-      lastOdometer: 0,
+    const newD: DriverInfo = {
+      id: Date.now().toString(),
+      driverName: dName,
+      phone: dPhone,
+      jobTitle: dJob || 'سائق',
+      carNumber: dCarNo || 'غير محدد',
     };
-
-    const newUserItem: User = {
-      username: newCarNo.trim(),
-      password: '000',
-      role: 'Driver',
-      carNumber: newCarNo.trim(),
-      driverName: newDriverName.trim() || 'غير محدد',
-    };
-
-    setCars([...cars, newCarItem]);
-    setUsers([...users, newUserItem]);
-    saveData();
-    Alert.alert('تم', 'تم إضافة السيارة والسائق بنجاح.');
-    setNewCarNo('');
-    setNewCarName('');
-    setNewDriverName('');
+    setDrivers([...drivers, newD]);
+    Alert.alert('تم', 'تم إضافة بيانات السائق بنجاح');
+    setDName('');
+    setDPhone('');
+    setDJob('');
+    setDCarNo('');
   };
 
-  const filteredRequests = requests.filter((r) => {
-    if (r.type !== reportTab) return false;
-    if (currentUser?.role === 'Driver' && r.carNumber !== currentUser.carNumber) return false;
-    if (fromDate && r.dateTime < fromDate) return false;
-    if (toDate && r.dateTime > toDate) return false;
-    return true;
-  });
+  const handleAddCodingItem = () => {
+    if (!newCodingInput.trim()) return;
+    if (codingActiveType === 'محطات') setStations([...stations, newCodingInput]);
+    else if (codingActiveType === 'مخصصات') setRegions([...regions, newCodingInput]);
+    else if (codingActiveType === 'قطع غيار') setSpareParts([...spareParts, newCodingInput]);
+    else if (codingActiveType === 'زيوت') setOilTypes([...oilTypes, newCodingInput]);
+    else if (codingActiveType === 'بطاريات') setBatteries([...batteries, newCodingInput]);
+    else if (codingActiveType === 'إطارات') setTires([...tires, newCodingInput]);
 
-  const totalQuantityReport = filteredRequests.reduce((sum, r) => sum + (r.quantityLiters || 0), 0);
-  const totalCostReport = filteredRequests.reduce((sum, r) => sum + r.totalCost, 0);
+    setNewCodingInput('');
+    Alert.alert('تم', 'تم إضافة العنصر بنجاح');
+  };
 
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" />
-        <ScrollView contentContainerStyle={styles.authScroll}>
-          <View style={styles.authBox}>
-            <View style={styles.logoBadge}>
-              <Text style={styles.logoBadgeText}>YCPD</Text>
-              <View style={styles.logoSmile} />
-              <Text style={styles.logoAtlasText}>أطلس</Text>
-            </View>
-
-            <Text style={styles.appTitle}>نظام إدارة السيارات والأسطول</Text>
-            <Text style={styles.appSubTitle}>شركة YCPD - أطلس</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>رقم السيارة (اسم المستخدم):</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="أدخل رقم السيارة (مثال: 22618)"
-                value={loginUsername}
-                onChangeText={setLoginUsername}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>كلمة المرور (افتراضي 000):</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="****"
-                secureTextEntry
-                value={loginPassword}
-                onChangeText={setLoginPassword}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleLogin}>
-              <Text style={styles.btnText}>تسجيل الدخول</Text>
+        <View style={styles.authContainer}>
+          <Text style={styles.appHeaderTitle}>السيارات - أطلس</Text>
+          <View style={styles.cardBox}>
+            <Text style={styles.formTitle}>تسجيل الدخول</Text>
+            <TextInput style={styles.customInput} placeholder="رقم السيارة / اسم المستخدم" value={loginUsername} onChangeText={setLoginUsername} />
+            <TextInput style={styles.customInput} placeholder="كلمة المرور (افتراضي 000)" secureTextEntry value={loginPassword} onChangeText={setLoginPassword} />
+            <TouchableOpacity style={styles.redButton} onPress={handleLogin}>
+              <Text style={styles.redButtonText}>دخول</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.topInfoBar}>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>السيارة:</Text>
-          <Text style={styles.infoValue}>{currentUser.carNumber}</Text>
-        </View>
-        <View style={styles.infoCol}>
-          <Text style={styles.infoLabel}>المستخدم / السائق:</Text>
-          <Text style={styles.infoValue}>{currentUser.driverName}</Text>
-        </View>
-        <TouchableOpacity style={styles.logoutChip} onPress={() => setCurrentUser(null)}>
-          <Text style={styles.logoutChipText}>خروج</Text>
+      <StatusBar barStyle="dark-content" />
+
+      {/* الهيدر العلوي */}
+      <View style={styles.topHeader}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => setCurrentTab('home')}>
+          <Text style={styles.backBtnText}>→</Text>
+        </TouchableOpacity>
+        <Text style={styles.headerTitleText}>
+          {currentTab === 'home' && 'الرئيسية'}
+          {currentTab === 'request_form' && 'طلب خدمة / محروقات'}
+          {currentTab === 'reports' && 'التقارير والإستعلام'}
+          {currentTab === 'cars' && 'بيانات السيارات'}
+          {currentTab === 'drivers' && 'بيانات السائقين'}
+          {currentTab === 'coding' && 'شاشة التكويد'}
+          {currentTab === 'admin' && 'لوحة الإدارة'}
+        </Text>
+      </View>
+
+      <ScrollView style={styles.mainContent}>
+        {/* الواجهة الرئيسية - بطاقات الأيقونات مثل الصورة تماماً */}
+        {currentTab === 'home' && (
+          <View>
+            <View style={styles.welcomeCard}>
+              <Text style={styles.welcomeSub}>مساء الخير</Text>
+              <Text style={styles.welcomeName}>{currentUser.driverName}</Text>
+            </View>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => { setRequestType('محروقات'); setCurrentTab('request_form'); }}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>طلب محروقات / زيوت</Text>
+              <Text style={styles.cardIconEmoji}>⛽</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCurrentTab('reports')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>التقارير والإستعلام</Text>
+              <Text style={styles.cardIconEmoji}>📊</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCurrentTab('cars')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>بيانات السيارات</Text>
+              <Text style={styles.cardIconEmoji}>🚛</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCurrentTab('drivers')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>بيانات السائقين</Text>
+              <Text style={styles.cardIconEmoji}>👨‍✈️</Text>
+            </TouchableOpacity>
+
+            {currentUser.role === 'Admin' && (
+              <>
+                <TouchableOpacity style={styles.actionCard} onPress={() => setCurrentTab('coding')}>
+                  <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+                  <Text style={styles.cardLabelText}>شاشة التكويد</Text>
+                  <Text style={styles.cardIconEmoji}>⚙️</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.actionCard} onPress={() => setCurrentTab('admin')}>
+                  <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+                  <Text style={styles.cardLabelText}>طلبات الموظفين الاعتماد</Text>
+                  <Text style={styles.cardIconEmoji}>📋</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* نموذج الطلب - مع القوائم المنسدلة المحدثة */}
+        {currentTab === 'request_form' && (
+          <View>
+            <View style={styles.topTabsRow}>
+              <TouchableOpacity style={[styles.subTab, requestType === 'محروقات' && styles.subTabActive]} onPress={() => setRequestType('محروقات')}>
+                <Text style={[styles.subTabText, requestType === 'محروقات' && styles.subTabTextActive]}>محروقات</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.subTab, requestType === 'زيوت' && styles.subTabActive]} onPress={() => setRequestType('زيوت')}>
+                <Text style={[styles.subTabText, requestType === 'زيوت' && styles.subTabTextActive]}>زيوت</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.formBoxCard}>
+              <Text style={styles.fieldLabel}>التاريخ</Text>
+              <TextInput style={styles.dropdownSelector} value={requestDate} onChangeText={setRequestDate} />
+
+              <Text style={styles.fieldLabel}>اختر المحطة</Text>
+              <TouchableOpacity style={styles.dropdownSelector} onPress={() => openPicker(stations, setSelectedStation)}>
+                <Text style={styles.dropdownText}>{selectedStation} ▼</Text>
+              </TouchableOpacity>
+
+              <Text style={styles.fieldLabel}>منطقة المخصص</Text>
+              <TouchableOpacity style={styles.dropdownSelector} onPress={() => openPicker(regions, setSelectedRegion)}>
+                <Text style={styles.dropdownText}>{selectedRegion} ▼</Text>
+              </TouchableOpacity>
+
+              {requestType === 'زيوت' && (
+                <>
+                  <Text style={styles.fieldLabel}>اختر نوع الزيت</Text>
+                  <TouchableOpacity style={styles.dropdownSelector} onPress={() => openPicker(oilTypes, setSelectedOil)}>
+                    <Text style={styles.dropdownText}>{selectedOil} ▼</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+
+              <Text style={styles.fieldLabel}>الكمية (لتر)</Text>
+              <TextInput style={styles.dropdownSelector} keyboardType="numeric" placeholder="أدخل الكمية" value={quantity} onChangeText={setQuantity} />
+
+              <Text style={styles.fieldLabel}>ملاحظات الطلب</Text>
+              <TextInput style={[styles.dropdownSelector, { height: 70 }]} multiline value={details} onChangeText={setDetails} />
+
+              <TouchableOpacity style={styles.redButton} onPress={handleSendRequest}>
+                <Text style={styles.redButtonText}>إرسال الطلب</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* شاشة التكويد لحساب ميثاق (المدير) ببطاقات الأيقونات */}
+        {currentTab === 'coding' && currentUser.role === 'Admin' && (
+          <View>
+            <Text style={styles.sectionTitleHeader}>شاشة التكويد المركزية</Text>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('محطات')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد محطات الوقود</Text>
+              <Text style={styles.cardIconEmoji}>⛽</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('مخصصات')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد أسماء المخصصات</Text>
+              <Text style={styles.cardIconEmoji}>📍</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('قطع غيار')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد قطع الغيار</Text>
+              <Text style={styles.cardIconEmoji}>🛠️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('زيوت')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد أصناف الزيت</Text>
+              <Text style={styles.cardIconEmoji}>🛢️</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('بطاريات')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد البطاريات</Text>
+              <Text style={styles.cardIconEmoji}>🔋</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.actionCard} onPress={() => setCodingActiveType('إطارات')}>
+              <View style={styles.leftCircleArrow}><Text style={styles.arrowText}>›</Text></View>
+              <Text style={styles.cardLabelText}>تكويد الإطارات</Text>
+              <Text style={styles.cardIconEmoji}>🛞</Text>
+            </TouchableOpacity>
+
+            {codingActiveType && (
+              <View style={styles.formBoxCard}>
+                <Text style={styles.fieldLabel}>إضافة {codingActiveType} جديد:</Text>
+                <TextInput style={styles.dropdownSelector} placeholder="أدخل اسم البند جديد" value={newCodingInput} onChangeText={setNewCodingInput} />
+                <TouchableOpacity style={styles.redButton} onPress={handleAddCodingItem}>
+                  <Text style={styles.redButtonText}>حفظ في النظام</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* شاشة بيانات السائقين الأيقونة الجديدة */}
+        {currentTab === 'drivers' && (
+          <View>
+            <Text style={styles.sectionTitleHeader}>بيانات السائقين</Text>
+
+            {currentUser.role === 'Admin' && (
+              <View style={styles.formBoxCard}>
+                <Text style={styles.formTitle}>إضافة سائق جديد</Text>
+                <TextInput style={styles.dropdownSelector} placeholder="اسم السائق" value={dName} onChangeText={setDName} />
+                <TextInput style={styles.dropdownSelector} placeholder="رقم الهاتف" keyboardType="phone-pad" value={dPhone} onChangeText={setDPhone} />
+                <TextInput style={styles.dropdownSelector} placeholder="الوظيفة / الصفة" value={dJob} onChangeText={setDJob} />
+                <TextInput style={styles.dropdownSelector} placeholder="رقم السيارة المخصصة" value={dCarNo} onChangeText={setDCarNo} />
+                <TouchableOpacity style={styles.redButton} onPress={handleAddDriver}>
+                  <Text style={styles.redButtonText}>حفظ السائق</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {drivers.map((d) => (
+              <View key={d.id} style={styles.driverInfoCard}>
+                <Text style={styles.driverNameText}>اسم السائق: {d.driverName}</Text>
+                <Text style={styles.driverSubText}>رقم التلفون: {d.phone}</Text>
+                <Text style={styles.driverSubText}>الوظيفة: {d.jobTitle} | السيارة: {d.carNumber}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* شاشة بيانات السيارات */}
+        {currentTab === 'cars' && (
+          <View>
+            <Text style={styles.sectionTitleHeader}>أسطول السيارات</Text>
+            {cars.map((c) => (
+              <View key={c.carNumber} style={styles.driverInfoCard}>
+                <Text style={styles.driverNameText}>{c.carName}</Text>
+                <Text style={styles.driverSubText}>رقم السيارة: {c.carNumber} | السائق: {c.driverName}</Text>
+                <Text style={styles.driverSubText}>الموديل: {c.model} | الوقود: {c.fuelType}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* التقارير والإستعلام */}
+        {currentTab === 'reports' && (
+          <View>
+            <Text style={styles.sectionTitleHeader}>التقارير والإستعلام</Text>
+            {requests.map((r) => (
+              <View key={r.id} style={styles.driverInfoCard}>
+                <Text style={styles.driverNameText}>السيارة: {r.carNumber} ({r.driverName})</Text>
+                <Text style={styles.driverSubText}>النوع: {r.type} | التاريخ: {r.dateTime}</Text>
+                <Text style={styles.driverSubText}>الكمية: {r.quantityLiters} لتر | المبلغ: {r.totalCost} ريال</Text>
+                <Text style={styles.driverSubText}>الحالة: {r.status}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* الشريط السفلي للتنقل بنفس مظهر الصور */}
+      <View style={styles.bottomNavBar}>
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentTab('home')}>
+          <Text style={[styles.navIcon, currentTab === 'home' && styles.navIconActive]}>🏠</Text>
+          <Text style={[styles.navText, currentTab === 'home' && styles.navTextActive]}>الرئيسية</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentTab('reports')}>
+          <Text style={styles.navIcon}>📊</Text>
+          <Text style={styles.navText}>التقارير</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navItem} onPress={() => setCurrentUser(null)}>
+          <Text style={styles.navIcon}>⚙️</Text>
+          <Text style={styles.navText}>الإعدادات</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView horizontal style={styles.tabBar} showsHorizontalScrollIndicator={false}>
-        <TouchableOpacity style={[styles.tabItem, currentTab === 'requests' && styles.activeTabItem]} onPress={() => setCurrentTab('requests')}>
-          <Text style={styles.tabText}>طلب خدمة</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.tabItem, currentTab === 'reports' && styles.activeTabItem]} onPress={() => setCurrentTab('reports')}>
-          <Text style={styles.tabText}>التقارير والإستعلام</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.tabItem, currentTab === 'car_list' && styles.activeTabItem]} onPress={() => setCurrentTab('car_list')}>
-          <Text style={styles.tabText}>بيانات السيارات</Text>
-        </TouchableOpacity>
-
-        {currentUser.role === 'Admin' && (
-          <>
-            <TouchableOpacity style={[styles.tabItem, currentTab === 'add_car' && styles.activeTabItem]} onPress={() => setCurrentTab('add_car')}>
-              <Text style={styles.tabText}>إدخال بيانات سيارة</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.tabItem, currentTab === 'coding' && styles.activeTabItem]} onPress={() => setCurrentTab('coding')}>
-              <Text style={styles.tabText}>شاشة التكويد</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={[styles.tabItem, currentTab === 'admin_panel' && styles.activeTabItem]} onPress={() => setCurrentTab('admin_panel')}>
-              <Text style={styles.tabText}>لوحة الإدارة</Text>
-            </TouchableOpacity>
-          </>
-        )}
-      </ScrollView>
-
-      <ScrollView style={styles.content}>
-        {currentTab === 'requests' && (
-          <View>
-            <Text style={styles.sectionHeader}>تقديم طلب جديد</Text>
-            <View style={styles.typeSelector}>
-              {(['محروقات', 'زيوت', 'قطع غيار', 'صيانة', 'تائرات'] as RequestType[]).map((t) => (
+      {/* نافذة القوائم المنسدلة Modal */}
+      <Modal visible={pickerModalVisible} transparent animationType="slide">
+        <View style={styles.modalBg}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>اختر من القائمة</Text>
+            <ScrollView>
+              {pickerItems.map((item) => (
                 <TouchableOpacity
-                  key={t}
-                  style={[styles.typeBtn, selectedReqType === t && styles.activeTypeBtn]}
-                  onPress={() => setSelectedReqType(t)}
+                  key={item}
+                  style={styles.modalItemBtn}
+                  onPress={() => {
+                    onSelectPicker(item);
+                    setPickerModalVisible(false);
+                  }}
                 >
-                  <Text style={[styles.typeBtnText, selectedReqType === t && styles.activeTypeBtnText]}>{t}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.formCard}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>التاريخ:</Text>
-                <TextInput style={styles.input} value={requestDate} onChangeText={setRequestDate} />
-              </View>
-
-              {selectedReqType === 'محروقات' && (
-                <>
-                  <Text style={styles.priceNotice}>سعر اللتر المعتمد: {prices.fuelPricePerLiter} ريال</Text>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>الكمية باللتر:</Text>
-                    <TextInput
-                      style={styles.input}
-                      keyboardType="numeric"
-                      placeholder="أدخل الكمية"
-                      value={fuelQuantity}
-                      onChangeText={setFuelQuantity}
-                    />
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>اختر المحطة:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {stations.map((st) => (
-                        <TouchableOpacity key={st} style={[styles.chipBtn, selectedStation === st && styles.chipBtnActive]} onPress={() => setSelectedStation(st)}>
-                          <Text style={selectedStation === st ? styles.chipTextActive : styles.chipText}>{st}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>منطقة المخصص:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {regions.map((rg) => (
-                        <TouchableOpacity key={rg} style={[styles.chipBtn, selectedRegion === rg && styles.chipBtnActive]} onPress={() => setSelectedRegion(rg)}>
-                          <Text style={selectedRegion === rg ? styles.chipTextActive : styles.chipText}>{rg}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-
-                  <Text style={styles.calcTotalText}>
-                    الإجمالي: {((parseFloat(fuelQuantity) || 0) * prices.fuelPricePerLiter).toLocaleString()} ريال
-                  </Text>
-                </>
-              )}
-
-              {selectedReqType === 'زيوت' && (
-                <>
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>نوع الزيت:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      {oilTypes.map((ot) => (
-                        <TouchableOpacity key={ot} style={[styles.chipBtn, selectedOil === ot && styles.chipBtnActive]} onPress={() => setSelectedOil(ot)}>
-                          <Text style={selectedOil === ot ? styles.chipTextActive : styles.chipText}>{ot}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-
-                  <View style={styles.inputGroup}>
-                    <Text style={styles.label}>الكمية:</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" placeholder="عدد ألتار الزيت" value={oilQuantity} onChangeText={setOilQuantity} />
-                  </View>
-
-                  <View style={styles.odoBox}>
-                    <Text style={styles.label}>العداد السابق (تلقائي): {previousOdometerValue} كم</Text>
-                    <Text style={styles.label}>العداد الحالي:</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" placeholder="قراءة العداد الحالية" value={currentOdometer} onChangeText={setCurrentOdometer} />
-                    <Text style={styles.calcTotalText}>
-                      المسافة المقطوعة: {Math.max(0, (parseFloat(currentOdometer) || 0) - previousOdometerValue)} كم
-                    </Text>
-                  </View>
-                </>
-              )}
-
-              {(selectedReqType === 'قطع غيار' || selectedReqType === 'صيانة' || selectedReqType === 'تائرات') && (
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>التكلفة التقديرية (ريال):</Text>
-                  <TextInput style={styles.input} keyboardType="numeric" placeholder="التكلفة بالريال" value={estimatedCostInput} onChangeText={setEstimatedCostInput} />
-                </View>
-              )}
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>تفاصيل وملاحظات:</Text>
-                <TextInput style={[styles.input, { height: 60 }]} multiline placeholder="ملاحظات..." value={reqDetails} onChangeText={setReqDetails} />
-              </View>
-
-              <TouchableOpacity style={styles.attachBtn} onPress={pickImage}>
-                <Text style={styles.attachBtnText}>{attachmentUri ? '✔️ تم إرفاق الصورة' : '📷 إرفاق صورة الفاتورة / المرفق'}</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.btnPrimary} onPress={handleSendRequest}>
-                <Text style={styles.btnText}>إرسال الطلب</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {currentTab === 'reports' && (
-          <View>
-            <Text style={styles.sectionHeader}>التقارير والإستعلام</Text>
-
-            <ScrollView horizontal style={styles.tabBar} showsHorizontalScrollIndicator={false}>
-              {(['محروقات', 'زيوت', 'صيانة', 'قطع غيار', 'تائرات'] as RequestType[]).map((t) => (
-                <TouchableOpacity key={t} style={[styles.typeBtn, reportTab === t && styles.activeTypeBtn]} onPress={() => setReportTab(t)}>
-                  <Text style={[styles.typeBtnText, reportTab === t && styles.activeTypeBtnText]}>{t}</Text>
+                  <Text style={styles.modalItemText}>{item}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-
-            <View style={styles.formCard}>
-              <Text style={styles.label}>الفترة الزمنية للاستعلام:</Text>
-              <View style={{ flexDirection: 'row-reverse', justifyContent: 'space-between' }}>
-                <TextInput style={[styles.input, { flex: 0.48 }]} placeholder="من YYYY-MM-DD" value={fromDate} onChangeText={setFromDate} />
-                <TextInput style={[styles.input, { flex: 0.48 }]} placeholder="إلى YYYY-MM-DD" value={toDate} onChangeText={setToDate} />
-              </View>
-
-              <View style={styles.statsRow}>
-                <View style={styles.statBox}>
-                  <Text style={styles.statTitle}>إجمالي المسحوب</Text>
-                  <Text style={styles.statVal}>{totalQuantityReport.toLocaleString()}</Text>
-                </View>
-                <View style={styles.statBox}>
-                  <Text style={styles.statTitle}>إجمالي التكلفة</Text>
-                  <Text style={[styles.statVal, { color: '#2e7d32' }]}>{totalCostReport.toLocaleString()} ر.ي</Text>
-                </View>
-              </View>
-            </View>
-
-            <Text style={styles.sectionHeader}>السجل التفصيلي</Text>
-            {filteredRequests.map((r) => (
-              <View key={r.id} style={styles.reqCard}>
-                <Text style={styles.cardTitle}>السيارة: {r.carNumber} | السائق: {r.driverName}</Text>
-                <Text style={styles.reqDetail}>التاريخ: {r.dateTime} | النوع: {r.type}</Text>
-                {r.type === 'محروقات' && <Text style={styles.reqDetail}>الكمية: {r.quantityLiters} لتر | المحطة: {r.stationName} | المخصص: {r.allocationRegion}</Text>}
-                {r.type === 'زيوت' && <Text style={styles.reqDetail}>نوع الزيت: {r.oilType} | المسافة المقطوعة: {r.distanceTraveled} كم</Text>}
-                <Text style={styles.reqDetail}>المبلغ: {r.totalCost.toLocaleString()} ريال | الحالة: {r.status}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {currentTab === 'car_list' && (
-          <View>
-            <Text style={styles.sectionHeader}>بيانات جميع سيارات الأسطول</Text>
-            {cars.map((c) => (
-              <View key={c.carNumber} style={styles.reqCard}>
-                <Text style={styles.cardTitle}>{c.carName}</Text>
-                <Text style={styles.reqDetail}>رقم السيارة: {c.carNumber} | السائق: {c.driverName}</Text>
-                <Text style={styles.reqDetail}>الموديل: {c.model} | الوقود: {c.fuelType} | نوع النقل: {c.transportType}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {currentTab === 'add_car' && currentUser.role === 'Admin' && (
-          <View style={styles.formCard}>
-            <Text style={styles.sectionHeader}>إدخال بيانات سيارة جديدة</Text>
-            <TextInput style={styles.input} placeholder="رقم السيارة" value={newCarNo} onChangeText={setNewCarNo} />
-            <TextInput style={styles.input} placeholder="اسم السيارة ووصفها" value={newCarName} onChangeText={setNewCarName} />
-            <TextInput style={styles.input} placeholder="اسم السائق" value={newDriverName} onChangeText={setNewDriverName} />
-            <TextInput style={styles.input} placeholder="الموديل (مثال: 2020)" value={newModel} onChangeText={setNewModel} />
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleAddCar}>
-              <Text style={styles.btnText}>حفظ السيارة في النظام</Text>
+            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setPickerModalVisible(false)}>
+              <Text style={{ color: '#fff', fontWeight: 'bold' }}>إغلاق</Text>
             </TouchableOpacity>
           </View>
-        )}
-
-        {currentTab === 'coding' && currentUser.role === 'Admin' && (
-          <View style={styles.formCard}>
-            <Text style={styles.sectionHeader}>شاشة التكويد وإدارة الثوابت</Text>
-            <Text style={styles.label}>تكويد محطات الوقود:</Text>
-            <View style={{ flexDirection: 'row-reverse' }}>
-              <TextInput style={[styles.input, { flex: 1 }]} placeholder="اسم المحطة الجديد" value={newStationInput} onChangeText={setNewStationInput} />
-              <TouchableOpacity
-                style={styles.addSmallBtn}
-                onPress={() => {
-                  if (newStationInput) {
-                    setStations([...stations, newStationInput]);
-                    setNewStationInput('');
-                    saveData();
-                  }
-                }}
-              >
-                <Text style={styles.btnText}>إضافة</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {currentTab === 'admin_panel' && currentUser.role === 'Admin' && (
-          <View>
-            <Text style={styles.sectionHeader}>طلبات الخدمات الواردة للاعتماد</Text>
-            {requests.map((r) => (
-              <View key={r.id} style={styles.reqCard}>
-                <Text style={styles.cardTitle}>السائق: {r.driverName} ({r.carNumber})</Text>
-                <Text style={styles.reqDetail}>نوع الطلب: {r.type} | التاريخ: {r.dateTime}</Text>
-                <Text style={styles.reqDetail}>إجمالي المبلغ: {r.totalCost.toLocaleString()} ريال</Text>
-                <Text style={styles.reqDetail}>الحالة: {r.status}</Text>
-                <View style={styles.actionRow}>
-                  <TouchableOpacity
-                    style={[styles.smallBtn, { backgroundColor: '#2e7d32' }]}
-                    onPress={() => {
-                      setRequests(requests.map((item) => (item.id === r.id ? { ...item, status: 'تمت الموافقة' } : item)));
-                      saveData();
-                    }}
-                  >
-                    <Text style={styles.btnText}>موافقة</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.smallBtn, { backgroundColor: '#c62828' }]}
-                    onPress={() => {
-                      setRequests(requests.map((item) => (item.id === r.id ? { ...item, status: 'مرفوض' } : item)));
-                      saveData();
-                    }}
-                  >
-                    <Text style={styles.btnText}>رفض</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f9' },
-  authScroll: { flexGrow: 1, justifyContent: 'center', padding: 20 },
-  authBox: { backgroundColor: '#ffffff', borderRadius: 15, padding: 20, elevation: 4, alignItems: 'center' },
-  logoBadge: { backgroundColor: '#fff', borderRadius: 30, paddingHorizontal: 20, paddingVertical: 8, alignItems: 'center', borderWidth: 2, borderColor: '#000', marginBottom: 15 },
-  logoBadgeText: { fontWeight: 'bold', fontSize: 18, color: '#000' },
-  logoSmile: { width: 35, height: 10, borderBottomWidth: 4, borderBottomColor: '#d32f2f', borderRadius: 10 },
-  logoAtlasText: { fontSize: 14, fontWeight: 'bold', color: '#000' },
-  appTitle: { fontSize: 20, fontWeight: 'bold', color: '#0d47a1', marginTop: 10 },
-  appSubTitle: { fontSize: 13, color: '#666', marginBottom: 20 },
-  inputGroup: { width: '100%', marginBottom: 10 },
-  label: { fontSize: 13, fontWeight: 'bold', color: '#333', marginBottom: 4, textAlign: 'right' },
-  input: { backgroundColor: '#f0f4f8', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14, textAlign: 'right', borderWidth: 1, borderColor: '#ccc', marginBottom: 6 },
-  btnPrimary: { backgroundColor: '#1565c0', borderRadius: 8, paddingVertical: 12, width: '100%', alignItems: 'center', marginTop: 10 },
-  btnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
-  topInfoBar: { backgroundColor: '#0d47a1', padding: 10, flexDirection: 'row-reverse', justifyContent: 'space-between', alignItems: 'center' },
-  infoCol: { alignItems: 'flex-start' },
-  infoLabel: { color: '#bbdefb', fontSize: 11 },
-  infoValue: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
-  logoutChip: { backgroundColor: '#c62828', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  logoutChipText: { color: '#fff', fontSize: 11, fontWeight: 'bold' },
-  tabBar: { flexDirection: 'row-reverse', backgroundColor: '#fff', elevation: 2, paddingVertical: 5 },
-  tabItem: { paddingHorizontal: 15, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
-  activeTabItem: { borderBottomColor: '#1565c0' },
-  tabText: { fontWeight: 'bold', color: '#333', fontSize: 13 },
-  content: { flex: 1, padding: 12 },
-  sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1', marginVertical: 8, textAlign: 'right' },
-  typeSelector: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginBottom: 10 },
-  typeBtn: { flex: 1, backgroundColor: '#e0e0e0', paddingVertical: 6, marginHorizontal: 2, borderRadius: 6, alignItems: 'center' },
-  activeTypeBtn: { backgroundColor: '#1565c0' },
-  typeBtnText: { fontSize: 11, fontWeight: 'bold', color: '#333' },
-  activeTypeBtnText: { color: '#fff' },
-  formCard: { backgroundColor: '#fff', borderRadius: 10, padding: 12, elevation: 2, marginBottom: 15 },
-  priceNotice: { color: '#d32f2f', fontWeight: 'bold', marginBottom: 8, textAlign: 'right', fontSize: 12 },
-  calcTotalText: { fontSize: 14, fontWeight: 'bold', color: '#2e7d32', marginVertical: 6, textAlign: 'right' },
-  chipBtn: { backgroundColor: '#e0e0e0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 15, marginRight: 6, marginBottom: 6 },
-  chipBtnActive: { backgroundColor: '#1565c0' },
-  chipText: { fontSize: 12, color: '#333' },
-  chipTextActive: { fontSize: 12, color: '#fff', fontWeight: 'bold' },
-  odoBox: { backgroundColor: '#e8f5e9', padding: 10, borderRadius: 8, marginVertical: 8 },
-  attachBtn: { backgroundColor: '#e3f2fd', padding: 10, borderRadius: 8, alignItems: 'center', marginVertical: 8, borderWidth: 1, borderColor: '#90caf9' },
-  attachBtnText: { color: '#1565c0', fontWeight: 'bold', fontSize: 13 },
-  statsRow: { flexDirection: 'row-reverse', justifyContent: 'space-between', marginTop: 10 },
-  statBox: { flex: 0.48, backgroundColor: '#f5f5f5', borderRadius: 8, padding: 10, alignItems: 'center' },
-  statTitle: { fontSize: 11, color: '#666' },
-  statVal: { fontSize: 16, fontWeight: 'bold', color: '#0d47a1', marginTop: 2 },
-  reqCard: { backgroundColor: '#fff', borderRadius: 8, padding: 10, marginBottom: 8, elevation: 2 },
-  cardTitle: { fontWeight: 'bold', fontSize: 14, textAlign: 'right', marginBottom: 4, color: '#0d47a1' },
-  reqDetail: { textAlign: 'right', color: '#444', marginBottom: 2, fontSize: 12 },
-  addSmallBtn: { backgroundColor: '#2e7d32', paddingHorizontal: 15, justifyContent: 'center', borderRadius: 8, marginRight: 5 },
-  actionRow: { flexDirection: 'row-reverse', justifyContent: 'space-around', marginTop: 8 },
-  smallBtn: { paddingHorizontal: 15, paddingVertical: 5, borderRadius: 6 },
+  container: { flex: 1, backgroundColor: '#f8f9fa' },
+  authContainer: { flex: 1, justifyContent: 'center', padding: 20 },
+  appHeaderTitle: { fontSize: 24, fontWeight: 'bold', color: '#c62828', textAlign: 'center', marginBottom: 20 },
+  cardBox: { backgroundColor: '#fff', borderRadius: 15, padding: 20, elevation: 3 },
+  formTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 15, textAlign: 'center' },
+  customInput: { backgroundColor: '#f1f3f5', borderRadius: 10, padding: 12, fontSize: 14, marginBottom: 12, textAlign: 'right' },
+  redButton: { backgroundColor: '#d32f2f', borderRadius: 10, paddingVertical: 14, alignItems: 'center', marginTop: 10 },
+  redButtonText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  
+  topHeader: { height: 55, backgroundColor: '#fff', flexDirection: 'row-reverse', alignItems: 'center', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  backBtn: { width: 35, height: 35, justifyContent: 'center', alignItems: 'center' },
+  backBtnText: { fontSize: 20, color: '#000' },
+  headerTitleText: { flex: 1, textAlign: 'center', fontSize: 18, fontWeight: 'bold', color: '#000' },
+  
+  mainContent: { flex: 1, padding: 15 },
+  welcomeCard: { backgroundColor: '#f1f3f5', borderRadius: 15, padding: 15, marginBottom: 15, alignItems: 'flex-end' },
+  welcomeSub: { color: '#d32f2f', fontSize: 16, fontWeight: 'bold' },
+  welcomeName: { color: '#212529', fontSize: 20, fontWeight: 'bold', marginTop: 2 },
+  
+  actionCard: { backgroundColor: '#e9ecef', borderRadius: 15, paddingVertical: 15, paddingHorizontal: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  leftCircleArrow: { width: 30, height: 30, borderRadius: 15, borderWidth: 1.5, borderColor: '#d32f2f', justifyContent: 'center', alignItems: 'center' },
+  arrowText: { color: '#d32f2f', fontSize: 18, fontWeight: 'bold', marginTop: -2 },
+  cardLabelText: { fontSize: 16, fontWeight: 'bold', color: '#212529' },
+  cardIconEmoji: { fontSize: 22 },
+
+  topTabsRow: { flexDirection: 'row-reverse', marginBottom: 15 },
+  subTab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#ccc' },
+  subTabActive: { borderBottomColor: '#d32f2f' },
+  subTabText: { color: '#666', fontWeight: 'bold' },
+  subTabTextActive: { color: '#d32f2f' },
+
+  formBoxCard: { backgroundColor: '#fff', borderRadius: 15, padding: 15, elevation: 2, marginBottom: 15 },
+  fieldLabel: { fontSize: 13, fontWeight: 'bold', color: '#495057', marginTop: 10, marginBottom: 5, textAlign: 'right' },
+  dropdownSelector: { backgroundColor: '#f1f3f5', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#ced4da', marginBottom: 5, alignItems: 'flex-end' },
+  dropdownText: { fontSize: 14, color: '#212529', fontWeight: 'bold' },
+
+  sectionTitleHeader: { fontSize: 18, fontWeight: 'bold', color: '#111', marginBottom: 15, textAlign: 'right' },
+  driverInfoCard: { backgroundColor: '#fff', borderRadius: 12, padding: 12, marginBottom: 10, elevation: 1 },
+  driverNameText: { fontSize: 15, fontWeight: 'bold', color: '#d32f2f', textAlign: 'right' },
+  driverSubText: { fontSize: 13, color: '#495057', textAlign: 'right', marginTop: 2 },
+
+  bottomNavBar: { height: 60, backgroundColor: '#fff', flexDirection: 'row-reverse', justifyContent: 'space-around', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#eee' },
+  navItem: { alignItems: 'center' },
+  navIcon: { fontSize: 18, color: '#666' },
+  navIconActive: { color: '#d32f2f' },
+  navText: { fontSize: 11, color: '#666', marginTop: 2 },
+  navTextActive: { color: '#d32f2f', fontWeight: 'bold' },
+
+  modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#fff', borderRadius: 15, padding: 20, maxHeight: '80%' },
+  modalTitle: { fontSize: 16, fontWeight: 'bold', textAlign: 'center', marginBottom: 15 },
+  modalItemBtn: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#eee', alignItems: 'center' },
+  modalItemText: { fontSize: 15, fontWeight: 'bold', color: '#333' },
+  closeModalBtn: { backgroundColor: '#d32f2f', padding: 10, borderRadius: 8, alignItems: 'center', marginTop: 15 }
 });
