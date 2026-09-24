@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,11 +10,9 @@ import {
   Modal,
   SafeAreaView,
   StatusBar,
-  FlatList,
   Switch
 } from 'react-native';
 
-// --- Types & Interfaces ---
 type Role = 'user' | 'admin';
 
 interface Vehicle {
@@ -63,12 +61,9 @@ interface UserPermissions {
 }
 
 export default function App() {
-  // --- States ---
   const [currentUserRole, setCurrentUserRole] = useState<Role>('user');
   const [currentTab, setCurrentTab] = useState<string>('requests_status');
-  const [userPassword, setUserPassword] = useState<string>('123456');
 
-  // Sample Vehicle for User
   const [userVehicle, setUserVehicle] = useState<Vehicle>({
     id: 'v1',
     name: 'شاحنة نقل جاف',
@@ -83,7 +78,6 @@ export default function App() {
     status: 'في الخدمة'
   });
 
-  // Admin Data Stores
   const [vehicles, setVehicles] = useState<Vehicle[]>([
     {
       id: 'v1',
@@ -133,7 +127,7 @@ export default function App() {
       type: 'وقود',
       processNumber: 'TRX-1001',
       date: new Date().toISOString().split('T')[0],
-      quantity: '100',
+      quantity: '100 لتر',
       allocation: 'رحلة تعز - عدن',
       station: 'محطة أطلس المركزية',
       amount: '50000',
@@ -146,7 +140,7 @@ export default function App() {
       type: 'وقود',
       processNumber: 'TRX-1002',
       date: new Date().toISOString().split('T')[0],
-      quantity: '80',
+      quantity: '80 لتر',
       allocation: 'تشغيل داخلي',
       station: 'محطة الصداقة',
       amount: '40000',
@@ -156,27 +150,21 @@ export default function App() {
     }
   ]);
 
-  // Form States
   const [newReqType, setNewReqType] = useState<any>('وقود');
   const [reqProcessNo, setReqProcessNo] = useState('');
   const [reqQuantity, setReqQuantity] = useState('');
   const [reqAllocation, setReqAllocation] = useState('');
   const [reqStation, setReqStation] = useState('');
 
-  // Password & Settings States
   const [editName, setEditName] = useState(userVehicle.name);
   const [editPlate, setEditPlate] = useState(userVehicle.plateNumber);
   const [editDriver, setEditDriver] = useState(userVehicle.driverName);
   const [newPass, setNewPass] = useState('');
 
-  // Vehicle Management States
   const [selectedVehicleForStatus, setSelectedVehicleForStatus] = useState<string>('v1');
-
-  // Modals
   const [showDriverModal, setShowDriverModal] = useState(false);
   const [driverNameInput, setDriverNameInput] = useState('');
 
-  // --- Handlers ---
   const handleCreateRequest = () => {
     if (userVehicle.status === 'موقف') {
       Alert.alert('تنبيه', 'السيارة متوقفة حالياً. لا يمكنك تقديم طلبات جديدة.');
@@ -226,7 +214,6 @@ export default function App() {
     Alert.alert('تم', `تم تغيير حالة السيارة إلى (${status}).`);
   };
 
-  // --- Helper Renderers ---
   const getStatusBadge = (status: string) => {
     let bg = '#FFC107';
     if (status === 'تم الاعتماد') bg = '#4CAF50';
@@ -242,7 +229,6 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0D47A1" />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.roleSwitchBtn}
@@ -255,16 +241,13 @@ export default function App() {
           </Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {currentUserRole === 'user' ? 'تطبيق أطلس - المستخدِم' : 'تطبيق أطلس - المسؤول'}
+          {currentUserRole === 'user' ? 'السيارات - أطلس (v1.0.6)' : 'أطلس - إداري (v1.0.6)'}
         </Text>
       </View>
 
-      {/* Main Screen Content */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* ================= USER VIEWS ================= */}
         {currentUserRole === 'user' && (
           <>
-            {/* 1. طلباتي */}
             {currentTab === 'requests_status' && (
               <View>
                 <Text style={styles.sectionTitle}>📋 قائمة طلباتي</Text>
@@ -283,14 +266,13 @@ export default function App() {
               </View>
             )}
 
-            {/* 2. شاشة بيانات السيارة المسجلة بالحساب */}
             {currentTab === 'vehicle_info' && (
               <View>
                 <View style={styles.customTitleRow}>
                   <TouchableOpacity onPress={() => setCurrentTab('requests_status')}>
                     <Text style={styles.largeBackArrow}>➔</Text>
                   </TouchableOpacity>
-                  <Text style={styles.accordionHeader}>البيانات الشخصية والسيارة</Text>
+                  <Text style={styles.accordionHeader}>بيانات السيارة بالحساب</Text>
                 </View>
 
                 <View style={styles.accordionCard}>
@@ -318,7 +300,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 3. طلب خدمة (تحديث اسم طلب المحروقات) */}
             {currentTab === 'request_service' && (
               <View>
                 <Text style={styles.sectionTitle}>🛠️ شاشة طلب خدمة</Text>
@@ -391,7 +372,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 4. التقارير */}
             {currentTab === 'reports' && (
               <View>
                 <Text style={styles.sectionTitle}>📊 تقارير المستخدم</Text>
@@ -418,7 +398,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 5. الإعدادات */}
             {currentTab === 'settings' && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>⚙️ الإعدادات</Text>
@@ -463,10 +442,8 @@ export default function App() {
           </>
         )}
 
-        {/* ================= ADMIN VIEWS ================= */}
         {currentUserRole === 'admin' && (
           <>
-            {/* 6. طلبات الموظفين للمسؤول */}
             {currentTab === 'admin_requests' && (
               <View>
                 <Text style={styles.sectionTitle}>🔔 طلبات الموظفين والخدمات</Text>
@@ -501,7 +478,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 8. إضافة وتعديل وإيقاف سيارة */}
             {currentTab === 'admin_vehicles' && (
               <View>
                 <Text style={styles.sectionTitle}>🚗 إضافة وتعديل وإيقاف السيارات</Text>
@@ -541,7 +517,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 9. بيانات السائقين */}
             {currentTab === 'admin_drivers' && (
               <View>
                 <Text style={styles.sectionTitle}>👨‍✈️ بيانات السائقين</Text>
@@ -561,7 +536,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 10. صلاحيات المستخدمين */}
             {currentTab === 'admin_permissions' && (
               <View style={styles.card}>
                 <Text style={styles.sectionTitle}>🔐 إدارة صلاحيات المستخدمين</Text>
@@ -607,7 +581,6 @@ export default function App() {
         )}
       </ScrollView>
 
-      {/* Navigation Bar */}
       <View style={styles.navBar}>
         {currentUserRole === 'user' ? (
           <>
@@ -645,7 +618,6 @@ export default function App() {
         )}
       </View>
 
-      {/* 4. زر تسجيل الخروج في الأسفل */}
       <TouchableOpacity
         style={styles.logoutBtn}
         onPress={() => Alert.alert('تسجيل الخروج', 'تم تسجيل الخروج بنجاح.')}
@@ -653,7 +625,6 @@ export default function App() {
         <Text style={styles.logoutText}>🚪 تسجيل الخروج</Text>
       </TouchableOpacity>
 
-      {/* Modal - Add Driver */}
       <Modal visible={showDriverModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -691,7 +662,6 @@ export default function App() {
   );
 }
 
-// --- Stylesheet ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -706,7 +676,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: '#FFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold'
   },
   roleSwitchBtn: {
