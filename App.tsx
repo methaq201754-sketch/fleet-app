@@ -31,13 +31,6 @@ interface Vehicle {
   status: 'في الخدمة' | 'موقف';
 }
 
-interface Driver {
-  id: string;
-  name: string;
-  phone: string;
-  licenseNo: string;
-}
-
 interface VehiclePermission {
   canRequestFuel: boolean;
   canRequestOils: boolean;
@@ -63,7 +56,6 @@ interface ServiceRequest {
   driverName: string;
 }
 
-// واجهة عناصر التكويد
 interface CodeCategories {
   spareParts: string[];
   oils: string[];
@@ -75,7 +67,6 @@ interface CodeCategories {
 }
 
 export default function App() {
-  // 🔒 حالة تسجيل الدخول
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [loginUsername, setLoginUsername] = useState<string>('');
   const [loginPassword, setLoginPassword] = useState<string>('');
@@ -83,7 +74,6 @@ export default function App() {
   const [currentUserRole, setCurrentUserRole] = useState<Role>('user');
   const [currentTab, setCurrentTab] = useState<string>('my_requests');
 
-  // التبويبات الفرعية
   const [myRequestsSubTab, setMyRequestsSubTab] = useState<string>('وقود');
   const [serviceSubTab, setServiceSubTab] = useState<string>('وقود');
   const [codingSubTab, setCodingSubTab] = useState<string>('stations');
@@ -91,7 +81,6 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('لم تتم المزامنة بعد');
 
-  // 🚘 قائمة كافة السيارات
   const [allVehicles, setAllVehicles] = useState<Vehicle[]>([
     {
       id: 'v1',
@@ -121,20 +110,12 @@ export default function App() {
     }
   ]);
 
-  // 👨‍✈️ قائمة السائقين
-  const [drivers, setDrivers] = useState<Driver[]>([
-    { id: 'd1', name: 'ميثاق عبده علي مقبل', phone: '770000000', licenseNo: 'L-101' },
-    { id: 'd2', name: 'أحمد علي', phone: '771111111', licenseNo: 'L-102' }
-  ]);
-
-  // 🔑 صلاحيات السيارات (لكل سيارة صلاحيتها الخاصة)
   const [vehiclePermissions, setVehiclePermissions] = useState<Record<string, VehiclePermission>>({
     v1: { canRequestFuel: true, canRequestOils: true, canRequestTires: true, canRequestBatteries: true, canRequestMaintenance: true },
     v2: { canRequestFuel: true, canRequestOils: true, canRequestTires: true, canRequestBatteries: true, canRequestMaintenance: true }
   });
   const [selectedVehForPerms, setSelectedVehForPerms] = useState<string>('v1');
 
-  // 🏷️ شاشة التكويد (بيانات القوائم المنسدلة)
   const [codes, setCodes] = useState<CodeCategories>({
     spareParts: ['فلاتر', 'سير محرك', 'قماشات فرامل'],
     oils: ['زيت محرك 20W50', 'زيت هيدروليك', 'زيت جير'],
@@ -147,11 +128,9 @@ export default function App() {
 
   const [newCodeInput, setNewCodeInput] = useState<string>('');
 
-  // السيارة الحالية للمستخدم
   const [userVehicle, setUserVehicle] = useState<Vehicle>(allVehicles[0]);
   const [requests, setRequests] = useState<ServiceRequest[]>([]);
 
-  // 📝 مدخلات شاشة طلب خدمة
   const [reqProcessNo, setReqProcessNo] = useState('');
   const [reqQuantity, setReqQuantity] = useState('');
   const [reqPriceAmount, setReqPriceAmount] = useState('');
@@ -160,7 +139,6 @@ export default function App() {
   const [reqFuelType, setReqFuelType] = useState('ديزل');
   const [reqNotes, setReqNotes] = useState('');
 
-  // ⚙️ إعدادات الحساب وتغيير البيانات
   const [userPassword, setUserPassword] = useState('000');
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [editingField, setEditingField] = useState<'name' | 'plate' | 'driver' | null>(null);
@@ -177,13 +155,11 @@ export default function App() {
       const savedRequests = await AsyncStorage.getItem('@fleet_requests');
       const savedSyncTime = await AsyncStorage.getItem('@last_sync_time');
       const savedVehicles = await AsyncStorage.getItem('@all_vehicles');
-      const savedDrivers = await AsyncStorage.getItem('@all_drivers');
       const savedPerms = await AsyncStorage.getItem('@vehicle_permissions');
       const savedCodes = await AsyncStorage.getItem('@fleet_codes');
 
       if (savedRequests) setRequests(JSON.parse(savedRequests));
       if (savedVehicles) setAllVehicles(JSON.parse(savedVehicles));
-      if (savedDrivers) setDrivers(JSON.parse(savedDrivers));
       if (savedPerms) setVehiclePermissions(JSON.parse(savedPerms));
       if (savedCodes) setCodes(JSON.parse(savedCodes));
       if (savedSyncTime) setLastSyncTime(savedSyncTime);
@@ -197,17 +173,11 @@ export default function App() {
     await AsyncStorage.setItem('@fleet_requests', JSON.stringify(newList));
   };
 
-  const saveVehiclesLocally = async (newList: Vehicle[]) => {
-    setAllVehicles(newList);
-    await AsyncStorage.setItem('@all_vehicles', JSON.stringify(newList));
-  };
-
   const saveCodesLocally = async (newCodes: CodeCategories) => {
     setCodes(newCodes);
     await AsyncStorage.setItem('@fleet_codes', JSON.stringify(newCodes));
   };
 
-  // 🔐 تسجيل الدخول
   const handleLogin = () => {
     if (!loginUsername) {
       Alert.alert('خطأ', 'يرجى إدخال اسم المستخدم أو رقم السيارة');
@@ -263,14 +233,12 @@ export default function App() {
     setCurrentTab('my_requests');
   };
 
-  // 🚪 تسجيل الخروج
   const handleLogout = () => {
     setIsLoggedIn(false);
     setLoginUsername('');
     setLoginPassword('');
   };
 
-  // 🛠️ تقديم طلب خدمة
   const handleCreateRequest = (type: any) => {
     if (userVehicle.status === 'موقف') {
       Alert.alert('تنبيه', 'تم إيقاف هذه السيارة من قبل الإدارة. لا يمكن تقديم أي طلبات مصروفات.');
@@ -328,7 +296,6 @@ export default function App() {
     setReqNotes('');
   };
 
-  // 🏷️ إضافة عنصر تكويد جديد (خاص بالمسؤول)
   const handleAddCodeItem = (category: keyof CodeCategories) => {
     if (!newCodeInput.trim()) return;
     const updatedCategory = [...codes[category], newCodeInput.trim()];
@@ -338,7 +305,6 @@ export default function App() {
     Alert.alert('تم', 'تم إضافة العنصر بنجاح والتحديث في القوائم المنسدلة.');
   };
 
-  // 🔄 المزامنة
   const triggerSync = async () => {
     setIsSyncing(true);
     try {
@@ -362,7 +328,6 @@ export default function App() {
     }
   };
 
-  // 🔓 شاشة تسجيل الدخول
   if (!isLoggedIn) {
     return (
       <SafeAreaView style={styles.loginContainer}>
@@ -400,7 +365,6 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0D47A1" />
 
-      {/* شريط المزامنة العلوي */}
       <View style={styles.syncHeader}>
         <TouchableOpacity style={styles.syncBtn} onPress={triggerSync} disabled={isSyncing}>
           {isSyncing ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.syncBtnText}>🔄 مزامنة Oracle</Text>}
@@ -408,7 +372,6 @@ export default function App() {
         <Text style={styles.syncTimeText}>آخر مزامنة: {lastSyncTime}</Text>
       </View>
 
-      {/* الهيدر */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
           {currentUserRole === 'user' ? `السيارة (${userVehicle.plateNumber})` : 'أطلس - لوحة المسؤول'}
@@ -416,11 +379,8 @@ export default function App() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-
-        {/* ==================== 👤 حساب المستخدم ==================== */}
         {currentUserRole === 'user' && (
           <>
-            {/* 1️⃣ أيقونة وقائمة "طلباتي" الموزعة بالتفصيل */}
             {currentTab === 'my_requests' && (
               <View>
                 <Text style={styles.sectionTitle}>📋 قائمة طلباتي</Text>
@@ -463,7 +423,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 2️⃣ شاشة بيانات السيارة المسجلة بالحساب فقط */}
             {currentTab === 'vehicle_info' && (
               <View>
                 <Text style={styles.sectionTitle}>🚘 بيانات السيارة المسجلة بالحساب</Text>
@@ -485,7 +444,6 @@ export default function App() {
               </View>
             )}
 
-            {/* شاشة طلب خدمة المحدثة مع القوائم المنسدلة */}
             {currentTab === 'request_service' && (
               <View>
                 <Text style={styles.sectionTitle}>🛠️ شاشة تقديم طلب خدمة</Text>
@@ -508,7 +466,6 @@ export default function App() {
                   <Text style={styles.inputLabel}>التاريخ تلقائي:</Text>
                   <TextInput style={[styles.input, { backgroundColor: '#E0E0E0' }]} value={new Date().toISOString().split('T')[0]} editable={false} />
 
-                  {/* قائمة منسدلة لأنواع الوقود */}
                   {serviceSubTab === 'وقود' && (
                     <>
                       <Text style={styles.inputLabel}>اختر نوع الوقود (قائمة منسدلة):</Text>
@@ -526,7 +483,6 @@ export default function App() {
                     </>
                   )}
 
-                  {/* قائمة منسدلة للمحطات */}
                   <Text style={styles.inputLabel}>اختر اسم المحطة / الورشة (قائمة منسدلة):</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
                     {codes.stations.map((st) => (
@@ -540,7 +496,6 @@ export default function App() {
                     ))}
                   </ScrollView>
 
-                  {/* قائمة منسدلة للمخصصات */}
                   <Text style={styles.inputLabel}>اختر المخصص (قائمة منسدلة):</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginVertical: 4 }}>
                     {codes.allocations.map((al) => (
@@ -567,13 +522,11 @@ export default function App() {
               </View>
             )}
 
-            {/* 3️⃣ شاشة الإعدادات للمستخدم مجهزة بأقلام التعديل */}
             {currentTab === 'settings' && (
               <View>
                 <Text style={styles.sectionTitle}>⚙️ إعدادات الحساب</Text>
                 <View style={styles.card}>
                   
-                  {/* اسم السيارة مع قلم التعديل ✏️ */}
                   <View style={styles.editRow}>
                     <Text style={styles.inputLabel}>اسم السيارة: {userVehicle.name}</Text>
                     <TouchableOpacity onPress={() => setEditingField('name')}>
@@ -581,7 +534,6 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* رقم السيارة مع قلم التعديل ✏️ */}
                   <View style={styles.editRow}>
                     <Text style={styles.inputLabel}>رقم السيارة: {userVehicle.plateNumber}</Text>
                     <TouchableOpacity onPress={() => setEditingField('plate')}>
@@ -589,7 +541,6 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* اسم السائق مع قلم التعديل ✏️ */}
                   <View style={styles.editRow}>
                     <Text style={styles.inputLabel}>اسم السائق: {userVehicle.driverName}</Text>
                     <TouchableOpacity onPress={() => setEditingField('driver')}>
@@ -597,7 +548,6 @@ export default function App() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* في حال الضغط على قلم التعديل */}
                   {editingField !== null && (
                     <View style={styles.inlineEditBox}>
                       <Text style={styles.inputLabel}>
@@ -633,7 +583,6 @@ export default function App() {
 
                   <View style={{ height: 1, backgroundColor: '#DDD', marginVertical: 15 }} />
 
-                  {/* تغيير كلمة المرور للمستخدم */}
                   <Text style={styles.inputLabel}>تغيير كلمة المرور الخاصة بالمستخدم:</Text>
                   <TextInput
                     style={styles.input}
@@ -659,10 +608,8 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== 👑 حساب المسؤول ==================== */}
         {currentUserRole === 'admin' && (
           <>
-            {/* طلبات الموظفين والسيارات للمسؤول */}
             {currentTab === 'admin_requests' && (
               <View>
                 <Text style={styles.sectionTitle}>🔔 طلبات الموظفين والسيارات</Text>
@@ -709,7 +656,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 10️⃣ شاشة صلاحيات المستخدمين (اختيار أي سيارة لمنح/منع الصلاحيات) */}
             {currentTab === 'user_permissions' && (
               <View>
                 <Text style={styles.sectionTitle}>🔑 صلاحيات المستخدمين والسيارات</Text>
@@ -794,7 +740,6 @@ export default function App() {
               </View>
             )}
 
-            {/* 🏷️ شاشة التكويد الجديدة (تظهر للمسؤول فقط) */}
             {currentTab === 'coding_screen' && (
               <View>
                 <Text style={styles.sectionTitle}>🏷️ شاشة التكويد (إدارة القوائم)</Text>
@@ -850,7 +795,6 @@ export default function App() {
 
       </ScrollView>
 
-      {/* 4️⃣ شريط التنقل السفلي مع زر تسجيل الخروج الثابت بالأسفل */}
       <View style={styles.bottomBarContainer}>
         <View style={styles.navBar}>
           {currentUserRole === 'user' ? (
@@ -883,7 +827,6 @@ export default function App() {
           )}
         </View>
 
-        {/* 4️⃣ زر تسجيل الخروج لجميع الحسابات بالأسفل */}
         <TouchableOpacity style={styles.logoutBottomBtn} onPress={handleLogout}>
           <Text style={styles.logoutBottomText}>تسجيل الخروج 🚪</Text>
         </TouchableOpacity>
