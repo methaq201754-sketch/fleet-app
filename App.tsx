@@ -308,26 +308,6 @@ export default function App() {
     setVehNameInput(''); setVehPlateInput(''); setVehDriverInput('');
   };
 
-  const handleEditVehicle = () => {
-    const updated = allVehicles.map(v => {
-      if (v.id === selectedVehForEdit) {
-        return {
-          ...v,
-          name: vehNameInput || v.name,
-          plateNumber: vehPlateInput || v.plateNumber,
-          driverName: vehDriverInput || v.driverName,
-          type: vehTypeInput || v.type,
-          capacity: vehCapacityInput || v.capacity,
-          model: vehModelInput || v.model,
-          fuelType: vehFuelTypeInput || v.fuelType
-        };
-      }
-      return v;
-    });
-    saveVehiclesLocally(updated);
-    Alert.alert('تم', 'تم حفظ تعديلات بيانات السيارة بنجاح.');
-  };
-
   const handleAddDriver = () => {
     if (!driverNameInput) {
       Alert.alert('خطأ', 'يرجى إدخال اسم السائق');
@@ -469,7 +449,7 @@ export default function App() {
         <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
         <View style={styles.whiteLoginCard}>
           <Text style={styles.whiteLoginTitle}>أطلس - إدارة أسطول السيارات</Text>
-          <Text style={styles.whiteLoginSubtitle}>تسجيل الدخول للنظام (v1.3.0)</Text>
+          <Text style={styles.whiteLoginSubtitle}>تسجيل الدخول للنظام (v1.4.0)</Text>
 
           <Text style={styles.inputLabel}>اسم المستخدم:</Text>
           <TextInput
