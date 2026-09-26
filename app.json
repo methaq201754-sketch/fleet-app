@@ -2,7 +2,7 @@
   "expo": {
     "name": "السيارات - أطلس",
     "slug": "ycpd-fleet-app",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "orientation": "portrait",
     "icon": "./icon.png",
     "userInterfaceStyle": "light",
