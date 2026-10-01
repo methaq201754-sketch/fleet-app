@@ -25,25 +25,24 @@ jobs:
           java-version: '17'  
 
       - name: Install dependencies  
-        run: npm install  
+        run: npm ci || npm install  
 
-      - name: Prebuild React Native App  
-        run: |  
-          npx expo prebuild --platform android --clean  
+      - name: Expo Prebuild  
+        run: npx expo prebuild --platform android --clean  
 
-      - name: Build Android Release APK  
+      - name: Build Android APK  
         run: |  
           cd android  
           chmod +x gradlew  
-          ./gradlew assembleRelease --no-daemon  
+          ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon  
 
-      - name: Sign APK File  
-        uses: rDetermined/auto-sign-apk@v1
-        with:
-          apkPath: android/app/build/outputs/apk/release/app-release-unsigned.apk
+      - name: Sign APK  
+        uses: rDetermined/auto-sign-apk@v1  
+        with:  
+          apkPath: android/app/build/outputs/apk/release/app-release-unsigned.apk  
 
-      - name: Upload Signed APK  
+      - name: Upload APK Artifact  
         uses: actions/upload-artifact@v4  
         with:  
           name: AtlasFleet-APK  
-          path: android/app/build/outputs/apk/release/app-release-unsigned-signed.apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned-signed.apk  
