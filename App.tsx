@@ -1,3 +1,5 @@
+  
+
 
 import React, { useState, useEffect } from 'react';
 import {
@@ -20,8 +22,8 @@ import {
 // ==========================================
 // VERSION & BUILD INFO
 // ==========================================
-const APP_VERSION = "1.22.1";
-const APP_BUILD = "32";
+const APP_VERSION = "1.23.0";
+const APP_BUILD = "33";
 
 // ==========================================
 // INITIAL FLEET DATA (43 Vehicles)
@@ -420,31 +422,67 @@ export default function App() {
       {/* Main Content Area based on Selected Tab */}
       <ScrollView style={styles.content}>
         {userTab === 'service' && (
-          <View style={styles.gridContainer}>
-            <Text style={styles.sectionTitle}>شاشة طلب خدمة جديدة</Text>
-            
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('وقود')}>
-              <Text style={styles.gridCardTitle}>⛽ طلب وقود (محروقات)</Text>
+          <View style={styles.serviceCardsContainer}>
+            <Text style={styles.sectionTitle}>طلبات الخدمات</Text>
+
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('وقود')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>⛽</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب وقود (محروقات)</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('زيوت')}>
-              <Text style={styles.gridCardTitle}>🛢️ طلب زيوت</Text>
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('زيوت')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>🛢️</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب زيوت</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('قطع غيار')}>
-              <Text style={styles.gridCardTitle}>🔧 طلب قطع غيار</Text>
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('قطع غيار')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>🔧</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب قطع غيار</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('صيانة')}>
-              <Text style={styles.gridCardTitle}>🛠️ طلب صيانة</Text>
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('صيانة')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>🛠️</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب صيانة</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('إطارات')}>
-              <Text style={styles.gridCardTitle}>🛞 طلب إطارات</Text>
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('إطارات')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>🛞</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب إطارات</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.gridCard} onPress={() => setServiceTypeModal('بطاريات')}>
-              <Text style={styles.gridCardTitle}>🔋 طلب بطاريات</Text>
+            <TouchableOpacity style={styles.largeServiceCard} onPress={() => setServiceTypeModal('بطاريات')}>
+              <View style={styles.serviceIconCircle}>
+                <Text style={styles.serviceIcon}>🔋</Text>
+              </View>
+              <Text style={styles.largeServiceCardTitle}>طلب بطاريات</Text>
+              <View style={styles.serviceArrowCircle}>
+                <Text style={styles.serviceArrow}>‹</Text>
+              </View>
             </TouchableOpacity>
           </View>
         )}
@@ -796,25 +834,59 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     fontSize: 14
   },
-  gridContainer: {
-    flexDirection: 'row-reverse',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between'
+  serviceCardsContainer: {
+    paddingBottom: 8
   },
-  gridCard: {
-    width: '48%',
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 12,
+  largeServiceCard: {
+    minHeight: 112,
+    backgroundColor: '#eeeeee',
+    borderRadius: 22,
+    marginBottom: 14,
+    paddingHorizontal: 14,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 }
+  },
+  serviceIconCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#e2e2e2',
     alignItems: 'center',
     justifyContent: 'center',
-    elevation: 2
+    marginLeft: 14
   },
-  gridCardTitle: {
+  serviceIcon: {
+    fontSize: 32
+  },
+  largeServiceCardTitle: {
+    flex: 1,
+    textAlign: 'right',
     fontWeight: 'bold',
-    fontSize: 15,
-    color: '#2d3748'
+    fontSize: 18,
+    color: '#2d3748',
+    paddingHorizontal: 6
+  },
+  serviceArrowCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#c0272d',
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4
+  },
+  serviceArrow: {
+    fontSize: 34,
+    lineHeight: 38,
+    color: '#111111',
+    marginTop: -4
   },
   driverNav: {
     flexDirection: 'row-reverse',
