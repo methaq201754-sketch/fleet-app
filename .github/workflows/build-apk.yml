@@ -36,13 +36,16 @@ jobs:
           chmod +x gradlew  
           ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon  
 
-      - name: Sign APK  
-        uses: rDetermined/auto-sign-apk@v1  
-        with:  
-          apkPath: android/app/build/outputs/apk/release/app-release-unsigned.apk  
+      - name: Download Uber APK Signer
+        run: |
+          wget https://github.com/patrickfav/uber-apk-signer/releases/download/v1.3.0/uber-apk-signer-1.3.0.jar -O uber-apk-signer.jar
 
-      - name: Upload APK Artifact  
+      - name: Sign APK File
+        run: |
+          java -jar uber-apk-signer.jar --apks android/app/build/outputs/apk/release/app-release-unsigned.apk --overwrite
+
+      - name: Upload Signed APK  
         uses: actions/upload-artifact@v4  
         with:  
           name: AtlasFleet-APK  
-          path: android/app/build/outputs/apk/release/app-release-unsigned-signed.apk  
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk  
