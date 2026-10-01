@@ -42,10 +42,10 @@ jobs:
 
       - name: Sign APK File
         run: |
-          java -jar uber-apk-signer.jar --apks android/app/build/outputs/apk/release/app-release-unsigned.apk --overwrite
+          java -jar uber-apk-signer.jar --apks android/app/build/outputs/apk/release/*.apk --overwrite
 
       - name: Upload Signed APK  
         uses: actions/upload-artifact@v4  
         with:  
           name: AtlasFleet-APK  
-          path: android/app/build/outputs/apk/release/app-release-unsigned.apk  
+          path: android/app/build/outputs/apk/release/*.apk
