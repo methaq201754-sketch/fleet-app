@@ -18,10 +18,10 @@ import * as ImagePicker from 'expo-image-picker';
 
 /* =========================================================
    ATLAS FLEET APP
-   VERSION: 1.20.1 (BUILD: 30)
+   VERSION: 1.21.1 (BUILD: 31)
    ========================================================= */
 
-const APP_VERSION = '1.20.1';
+const APP_VERSION = '1.21.1';
 const BUILD_NUMBER = '31';
 const SYNC_API_URL = 'http://192.168.1.100:3000/api/sync';
 
