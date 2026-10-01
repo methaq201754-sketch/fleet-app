@@ -12,32 +12,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. سحب كود المستودع أولاً (ضروري جداً)
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      # 2. إعداد Java بدون خيار التخزين المؤقت لمنع الخطأ
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
+      # 3. إعداد Android SDK مع الحزم المستقرة
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # تم استبعاد حزمة 'tools' القديمة لمنع الخطأ
           packages: 'platform-tools platforms;android-34 build-tools;34.0.0'
 
+      # 4. إعطاء صلاحية التشغيل لملف gradlew
       - name: Make Gradlew Executable
         run: chmod +x gradlew
 
+      # 5. بناء تطبيق أندرويد
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
-      # إذا كنت تريد بناء نسخة Release قم بفك التعليق عن السطر التالي:
-      # - name: Build Release APK
-      #   run: ./gradlew assembleRelease --stacktrace
-
+      # 6. رفع ملف الـ APK الناتج كملف قابل للتحميل
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
