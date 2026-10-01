@@ -1,13 +1,22 @@
 {
-  "name": "FleetApp",
-  "displayName": "إدارة السيارات",
   "expo": {
     "name": "إدارة السيارات",
-    "slug": "fleet-app",
+    "slug": "fleet-management-app",
     "version": "1.22.1",
+    "orientation": "portrait",
+    "icon": "./icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "buildNumber": "32"
+    },
     "android": {
-      "versionCode": 32,
-      "package": "com.fleet.management"
+      "package": "com.fleet.management",
+      "versionCode": 32
     }
   }
 }
