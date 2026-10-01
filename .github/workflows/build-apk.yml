@@ -1,43 +1,51 @@
-name: Build Android APK
+name: Build Android APK Direct
 
 on:
   push:
-    branches: [ main, master ]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
 
-    steps:  
-      - name: Checkout repository  
-        uses: actions/checkout@v4  
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
 
-      - name: Setup Node.js  
-        uses: actions/setup-node@v4  
-        with:  
-          node-version: 18  
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
 
-      - name: Setup Java JDK  
-        uses: actions/setup-java@v4  
-        with:  
-          distribution: 'temurin'  
-          java-version: '17'  
+      - name: ☕ Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
-      - name: Install dependencies  
-        run: npm ci || npm install  
+      - name: 📱 Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-      - name: Expo Prebuild  
-        run: npx expo prebuild --platform android --clean  
+      - name: 📦 Install dependencies
+        run: npm install
 
-      - name: Build Android APK  
-        run: |  
-          cd android  
-          chmod +x gradlew  
-          ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon  
+      - name: 🏗 Prebuild Native Android Project
+        run: npx expo prebuild --platform android
 
-      - name: Upload APK Artifact  
-        uses: actions/upload-artifact@v4  
-        with:  
-          name: AtlasFleet-APK  
-          path: android/app/build/outputs/apk/release/*.apk
+      - name: 🔑 Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: 🔨 Build Android Release APK
+        run: |
+          cd android
+          ./gradlew assembleRelease --no-daemon
+
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: android/app/build/outputs/apk/release/app-release.apk
