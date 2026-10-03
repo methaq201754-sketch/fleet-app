@@ -2,7 +2,7 @@
   "expo": {
     "name": "إدارة السيارات",
     "slug": "fleet-management-app",
-    "version": "1.25.1",
+    "version": "1.25.2",
     "orientation": "portrait",
     "icon": "./icon.png",
     "userInterfaceStyle": "light",
