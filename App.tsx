@@ -1,4 +1,6 @@
 
+
+
 import React, { useMemo, useState } from 'react';
 import {
   StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert,
@@ -9,8 +11,8 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
  
-const APP_VERSION = '1.24.1';
-const APP_BUILD = '34';
+const APP_VERSION = '1.25.1';
+const APP_BUILD = '35';
  
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
