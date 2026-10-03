@@ -1,4 +1,4 @@
-name: Build Android APK
+Name: Build Android APK
 
 on:
   push:
@@ -38,14 +38,8 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon
 
-      # خطوة توقيع الـ APK لضمان قبوله عند التثبيت
-      - name: Sign APK
-        run: |
-          sudo apt-get update && sudo apt-get install -y apksigner
-          find android/app/build/outputs/apk/release/ -name "*.apk" -exec Uber-APK-Signer --apks {} \; || true
-
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: FleetManagement-1.24.1-build34
+          name: FleetManagement-1.25.1-build35
           path: android/app/build/outputs/apk/release/*.apk
