@@ -1,11 +1,51 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Expo Prebuild
+        run: npx expo prebuild --platform android --clean
+
       - name: Build Android APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon
+          ./gradlew assembleRelease -Dorg.gradle.jvmargs="-Xmx4096m -XX:MaxMetaspaceSize=1024m" --no-daemon
+
+      # خطوة توقيع الـ APK لضمان قبوله عند التثبيت
+      - name: Sign APK
+        run: |
+          sudo apt-get update && sudo apt-get install -y apksigner
+          find android/app/build/outputs/apk/release/ -name "*.apk" -exec Uber-APK-Signer --apks {} \; || true
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: FleetManagement-1.24.1-build34
-          path: android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/release/*.apk
