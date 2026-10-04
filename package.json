@@ -1,6 +1,6 @@
 {
   "name": "fleet-management-app",
-  "version": "1.25.2",
+  "version": "1.25.3",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
