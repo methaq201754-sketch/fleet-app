@@ -3,8 +3,6 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -12,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -23,35 +22,76 @@ jobs:
       - name: Setup Java JDK
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
       - name: Install dependencies
         run: npm install
+
+      - name: Check Expo project
+        run: npx expo config --type public
 
       - name: Expo Prebuild
         env:
           NODE_ENV: production
         run: npx expo prebuild --platform android --clean
 
-      - name: Bundle JavaScript with Expo
+      - name: Build Android Debug APK
+        working-directory: android
         env:
           NODE_ENV: production
+          GRADLE_OPTS: "-Xmx4096m -XX:MaxMetaspaceSize=1024m"
         run: |
-          mkdir -p android/app/src/main/assets
-          npx expo export:embed --platform android --dev false --entry-file node_modules/expo/AppEntry.js --bundle-output android/app/src/main/assets/index.android.bundle --assets-dest android/app/src/main/res
-
-      - name: Build Android APK
-        env:
-          NODE_ENV: production
-          GRADLE_OPTS: "-Dorg.gradle.jvmargs='-Xmx4096m -XX:MaxMetaspaceSize=1024m'"
-        run: |
-          cd android
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      - name: Upload APK Artifact
+      - name: Find APK
+        id: apk
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -type f -name "*.apk" | head -n 1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not created"
+            exit 1
+          fi
+
+          echo "APK found:"
+          ls -lh "$APK"
+
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK
+        run: |
+          APK="${{ steps.apk.outputs.path }}"
+
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)
+
+          if [ -z "$APKSIGNER" ]; then
+            echo "ERROR: apksigner not found"
+            exit 1
+          fi
+
+          echo "Verifying APK:"
+          "$APKSIGNER" verify --verbose "$APK"
+
+      - name: Check APK file
+        run: |
+          APK="${{ steps.apk.outputs.path }}"
+
+          echo "APK information:"
+          file "$APK"
+
+          echo "APK size:"
+          du -h "$APK"
+
+          echo "APK contents:"
+          unzip -t "$APK" > /dev/null
+
+          echo "APK ZIP structure is OK"
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: FleetManagement-1.25.1-build35
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: FleetManagement-1.25.2-build35
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
