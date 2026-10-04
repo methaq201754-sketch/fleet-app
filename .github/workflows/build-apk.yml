@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -71,20 +70,14 @@ jobs:
             exit 1
           fi
 
-          echo "Verifying APK:"
           "$APKSIGNER" verify --verbose "$APK"
 
       - name: Check APK file
         run: |
           APK="${{ steps.apk.outputs.path }}"
 
-          echo "APK information:"
           file "$APK"
-
-          echo "APK size:"
           du -h "$APK"
-
-          echo "APK contents:"
           unzip -t "$APK" > /dev/null
 
           echo "APK ZIP structure is OK"
