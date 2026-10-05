@@ -7,16 +7,16 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
-
-const APP_VERSION = '1.25.2';
-const APP_BUILD = '35';
-
+ 
+const APP_VERSION = '1.26.3';
+const APP_BUILD = '36';
+ 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
   border: '#E2E8F0', success: '#2E7D32', warning: '#ED8B00', danger: '#C62828',
 };
-
+ 
 type Vehicle = {
   id: string; name: string; driver: string; status: string; type: string;
   model: string; payload: string; fuelType: string; engineNo: string; chassisNo: string;
@@ -26,6 +26,8 @@ type RequestItem = {
   qty: number; total: number; status: string; notes?: string; imageUri?: string;
   station?: string; fuelType?: string; unit?: string; oilType?: string;
   itemName?: string; prevOdo?: number; currOdo?: number; distance?: number;
+  workshop?: string; engineer?: string; faultType?: string; requiredWork?: string;
+  client?: string; serviceDescription?: string;
 };
 type PermissionSet = {
   addVehicle: boolean; editVehicle: boolean; assignVehicle: boolean;
@@ -36,9 +38,8 @@ type PermissionSet = {
 type Assignment = {
   id: string; driver: string; vehicleId: string; startDate: string; endDate: string; notes: string;
 };
-
+ 
 const INITIAL_FLEET = [
-
   { id: '22618', name: 'قاطرة فولفو 2002 رقم 22618', driver: 'عبد الغني علي دحان', status: 'في الخدمة', type: 'شاحنة', model: '2002', payload: '40 طن', fuelType: 'ديزل', engineNo: 'ENG-22618', chassisNo: 'CHS-22618' },
   { id: '36040', name: 'شاحنة فولفو 2013 رقم 36040', driver: 'حافظ عبده محمد النينه', status: 'في الخدمة', type: 'شاحنة', model: '2013', payload: '35 طن', fuelType: 'ديزل', engineNo: 'ENG-36040', chassisNo: 'CHS-36040' },
   { id: '28336', name: 'متسوبيشي فوزو 2012 رقم 28336', driver: 'عبد الله احمد عبد الله', status: 'في الخدمة', type: 'دينا', model: '2012', payload: '7 طن', fuelType: 'ديزل', engineNo: 'ENG-28336', chassisNo: 'CHS-28336' },
@@ -83,22 +84,22 @@ const INITIAL_FLEET = [
   { id: '49039', name: 'تويوتا فور تشنر 2013', driver: 'خالد الشراعي', status: 'في الخدمة', type: 'جيب', model: '2013', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-49039', chassisNo: 'CHS-49039' },
   { id: '56989', name: 'تويوتا فور تشنر 2015', driver: 'نبيل الشوافي', status: 'في الخدمة', type: 'جيب', model: '2015', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-56989', chassisNo: 'CHS-56989' }
 ];
-
+ 
 const DEFAULT_PERMISSIONS: PermissionSet = {
   addVehicle: true, editVehicle: false, assignVehicle: false, changePassword: true,
   reports: true, requestService: true, fuel: true, oils: true, batteries: true,
   parts: true, maintenance: true, tires: true,
 };
-
+ 
 const TODAY = () => new Date().toISOString().slice(0, 10);
 const money = (n: number) => `${Number(n || 0).toLocaleString()} ريال`;
 const escapeHtml = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
+ 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-
+ 
   const [fleet, setFleet] = useState<Vehicle[]>(INITIAL_FLEET);
   const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
   const [fuelTypes, setFuelTypes] = useState<string[]>(['ديزل', 'بترول']);
@@ -107,7 +108,12 @@ export default function App() {
   const [parts, setParts] = useState<string[]>(['فلتر زيت', 'فلتر هواء', 'فحمات فرامل']);
   const [tires, setTires] = useState<string[]>(['إطار 12.00R20', 'إطار 215/75R17.5']);
   const [maintenanceItems, setMaintenanceItems] = useState<string[]>(['صيانة عامة', 'كهرباء', 'ميكانيكا']);
-
+  
+  // New coding states
+  const [workshops, setWorkshops] = useState<string[]>(['ورشة المركز الرئيسي', 'ورشة الصناعية']);
+  const [clients, setClients] = useState<string[]>(['شركة الألوان', 'الشركة العامة']);
+  const [engineers, setEngineers] = useState<string[]>(['مهندس أحمد', 'مهندس محمد']);
+ 
   const [prices, setPrices] = useState<Record<string, number>>({
     'ديزل': 1200, 'بترول': 1200, 'تويوتا': 4500, 'ليكوي مولي': 6000,
     'ناشيونال': 4000, 'بطارية 70 أمبير': 65000, 'بطارية 100 أمبير': 85000,
@@ -115,7 +121,7 @@ export default function App() {
     'إطار 12.00R20': 85000, 'إطار 215/75R17.5': 65000,
     'صيانة عامة': 10000, 'كهرباء': 10000, 'ميكانيكا': 10000,
   });
-
+ 
   const [requests, setRequests] = useState<RequestItem[]>([
     { id: 'REQ-1001', vehicleId: '22618', driver: 'عبد الغني علي دحان', type: 'وقود',
       date: '2026-10-01', qty: 50, total: 60000, station: 'محطة الشركة', fuelType: 'ديزل',
@@ -124,17 +130,19 @@ export default function App() {
       date: '2026-10-01', qty: 4, total: 18000, oilType: 'تويوتا', unit: 'دبة',
       prevOdo: 124000, currOdo: 129000, distance: 5000, status: 'قيد المراجعة', notes: 'تغيير زيت دوري' },
   ]);
-
+ 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionSet>>({});
   const [userTab, setUserTab] = useState('service');
   const [adminTab, setAdminTab] = useState('requests');
-
+  const [adminRequestSubTab, setAdminRequestSubTab] = useState('الكل');
+  const [adminPricingSubTab, setAdminPricingSubTab] = useState('وقود');
+ 
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [itemEditor, setItemEditor] = useState({ index: -1, value: '' });
   const [newItem, setNewItem] = useState('');
-
+ 
   const [selectedStation, setSelectedStation] = useState(stations[0]);
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
   const [selectedOil, setSelectedOil] = useState(oils[0]);
@@ -142,45 +150,55 @@ export default function App() {
   const [selectedPart, setSelectedPart] = useState(parts[0]);
   const [selectedTire, setSelectedTire] = useState(tires[0]);
   const [selectedMaintenance, setSelectedMaintenance] = useState(maintenanceItems[0]);
+  const [selectedWorkshop, setSelectedWorkshop] = useState(workshops[0]);
+  const [selectedEngineer, setSelectedEngineer] = useState(engineers[0]);
+  const [selectedClient, setSelectedClient] = useState(clients[0]);
   const [selectedUnit, setSelectedUnit] = useState('دبة');
+  
   const [reqQty, setReqQty] = useState('');
   const [currOdometer, setCurrOdometer] = useState('');
   const [reqNotes, setReqNotes] = useState('');
   const [reqImage, setReqImage] = useState<string | undefined>();
-
+  const [faultType, setFaultType] = useState('');
+  const [requiredWork, setRequiredWork] = useState('');
+  const [serviceDescription, setServiceDescription] = useState('');
+ 
   const [editDriverName, setEditDriverName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [reportFrom, setReportFrom] = useState('');
   const [reportTo, setReportTo] = useState('');
   const [reportType, setReportType] = useState('الكل');
-
+ 
   const [assignmentForm, setAssignmentForm] = useState<Assignment>({
     id: '', driver: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
   });
-
+ 
   const getPermission = (vehicleId: string): PermissionSet =>
     permissions[vehicleId] || DEFAULT_PERMISSIONS;
-
+ 
   const getNextRequestId = () => {
     const nums = requests.map(r => Number(String(r.id).replace(/\D/g, '')) || 0);
     return `REQ-${Math.max(1000, ...nums) + 1}`;
   };
-
+ 
   const lastOdometer = (vehicleId: string) => {
     const rows = requests.filter(r => r.vehicleId === vehicleId && r.type === 'زيوت' && r.currOdo != null);
     return rows.length ? Number(rows[0].currOdo) || 0 : 0;
   };
-
-  const requestTypes = ['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات'];
+ 
+  const requestTypes = ['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات', 'إرسالية صيانة', 'إرسالية بنشر وخدمات'];
+  
   const codingMap: Record<string, string[]> = {
     'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
     'الإطارات': tires, 'المحطات': stations, 'الصيانة': maintenanceItems,
+    'الورش': workshops, 'العملاء': clients, 'المهندسين': engineers,
   };
   const codingSetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
     'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
     'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations, 'الصيانة': setMaintenanceItems,
+    'الورش': setWorkshops, 'العملاء': setClients, 'المهندسين': setEngineers,
   };
-
+ 
   const handleLogin = () => {
     const u = username.trim(), p = password.trim();
     if (u === 'ميثاق' && p === '111') {
@@ -199,11 +217,11 @@ export default function App() {
     }
     Alert.alert('خطأ في الدخول', 'اسم المستخدم أو كلمة المرور غير صحيحة');
   };
-
+ 
   const handleLogout = () => {
     setCurrentUser(null); setUserTab('service'); setAdminTab('requests');
   };
-
+ 
   const openImagePicker = () => {
     Alert.alert('إرفاق صورة', 'اختر مصدر الصورة', [
       {
@@ -231,7 +249,7 @@ export default function App() {
       { text: 'إلغاء', style: 'cancel' },
     ]);
   };
-
+ 
   const currentUnitPrice = () => {
     switch (serviceTypeModal) {
       case 'وقود': return prices[selectedFuel] || 0;
@@ -243,62 +261,76 @@ export default function App() {
       default: return 0;
     }
   };
-
+ 
   const submitRequest = () => {
     if (!currentUser || !serviceTypeModal) return;
-    const permissionKey: Record<string, keyof PermissionSet> = {
-      'وقود': 'fuel', 'زيوت': 'oils', 'بطاريات': 'batteries',
-      'قطع غيار': 'parts', 'صيانة': 'maintenance', 'إطارات': 'tires',
-    };
-    if (!getPermission(currentUser.id)[permissionKey[serviceTypeModal]]) {
-      Alert.alert('غير مسموح', 'لا توجد صلاحية لتقديم هذا النوع من الطلبات.');
-      return;
-    }
-
-    const qty = Number(reqQty);
-    if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
-
-    if (serviceTypeModal === 'زيوت' &&
-        (!currOdometer || Number(currOdometer) < lastOdometer(currentUser.id))) {
-      Alert.alert('العداد', 'العداد الحالي يجب أن يكون أكبر من أو مساويًا للعداد السابق.');
-      return;
-    }
-
-    const unitPrice = currentUnitPrice();
-    const previous = lastOdometer(currentUser.id);
-    const curr = Number(currOdometer) || previous;
-
+    
     const item: RequestItem = {
       id: getNextRequestId(), vehicleId: currentUser.id, driver: currentUser.driver,
-      type: serviceTypeModal, date: TODAY(), qty, total: qty * unitPrice,
+      type: serviceTypeModal, date: TODAY(), qty: 1, total: 0,
       status: 'قيد المراجعة', notes: reqNotes, imageUri: reqImage,
     };
-
-    if (serviceTypeModal === 'وقود') { item.station = selectedStation; item.fuelType = selectedFuel; }
-    if (serviceTypeModal === 'زيوت') {
-      item.oilType = selectedOil; item.unit = selectedUnit;
-      item.prevOdo = previous; item.currOdo = curr; item.distance = curr - previous;
+ 
+    if (serviceTypeModal === 'وقود') {
+      const qty = Number(reqQty);
+      if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
+      item.qty = qty;
+      item.total = qty * currentUnitPrice();
+      item.station = selectedStation;
+      item.fuelType = selectedFuel;
+    } else if (serviceTypeModal === 'زيوت') {
+      const qty = Number(reqQty);
+      if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
+      if (!currOdometer || Number(currOdometer) < lastOdometer(currentUser.id)) {
+        Alert.alert('العداد', 'العداد الحالي يجب أن يكون أكبر من أو مساويًا للعداد السابق.');
+        return;
+      }
+      const previous = lastOdometer(currentUser.id);
+      const curr = Number(currOdometer) || previous;
+      item.qty = qty;
+      item.total = qty * currentUnitPrice();
+      item.oilType = selectedOil;
+      item.unit = selectedUnit;
+      item.prevOdo = previous;
+      item.currOdo = curr;
+      item.distance = curr - previous;
+    } else if (['بطاريات', 'قطع غيار', 'إطارات', 'صيانة'].includes(serviceTypeModal)) {
+      const qty = Number(reqQty);
+      if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
+      item.qty = qty;
+      item.total = qty * currentUnitPrice();
+      if (serviceTypeModal === 'بطاريات') item.itemName = selectedBattery;
+      if (serviceTypeModal === 'قطع غيار') item.itemName = selectedPart;
+      if (serviceTypeModal === 'إطارات') item.itemName = selectedTire;
+      if (serviceTypeModal === 'صيانة') item.itemName = selectedMaintenance;
+    } else if (serviceTypeModal === 'إرسالية صيانة') {
+      if (!faultType.trim()) { Alert.alert('تنبيه', 'يرجى إدخال نوع العطل.'); return; }
+      item.workshop = selectedWorkshop;
+      item.engineer = selectedEngineer;
+      item.faultType = faultType;
+      item.requiredWork = requiredWork;
+    } else if (serviceTypeModal === 'إرسالية بنشر وخدمات') {
+      if (!serviceDescription.trim()) { Alert.alert('تنبيه', 'يرجى إدخال وصف الخدمة.'); return; }
+      item.client = selectedClient;
+      item.serviceDescription = serviceDescription;
     }
-    if (serviceTypeModal === 'بطاريات') item.itemName = selectedBattery;
-    if (serviceTypeModal === 'قطع غيار') item.itemName = selectedPart;
-    if (serviceTypeModal === 'إطارات') item.itemName = selectedTire;
-    if (serviceTypeModal === 'صيانة') item.itemName = selectedMaintenance;
-
+ 
     setRequests(prev => [item, ...prev]);
     Alert.alert('تم الإرسال', `تم إرسال طلب ${serviceTypeModal} برقم العملية ${item.id}.`);
     setServiceTypeModal(null);
     setReqQty(''); setCurrOdometer(''); setReqNotes(''); setReqImage(undefined);
+    setFaultType(''); setRequiredWork(''); setServiceDescription('');
   };
-
+ 
   const updateRequestStatus = (id: string, status: string) =>
     setRequests(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-
+ 
   const saveCodingItem = () => {
     if (!codingModal || !newItem.trim()) return;
     const setter = codingSetters[codingModal];
     const list = codingMap[codingModal];
     const value = newItem.trim();
-
+ 
     if (itemEditor.index >= 0) {
       const oldValue = list[itemEditor.index];
       setter(prev => prev.map((x, i) => i === itemEditor.index ? value : x));
@@ -311,15 +343,15 @@ export default function App() {
       }
     } else if (!list.includes(value)) {
       setter(prev => [...prev, value]);
-      if (codingModal !== 'المحطات' && prices[value] == null) {
+      if (!['المحطات', 'الورش', 'العملاء', 'المهندسين'].includes(codingModal) && prices[value] == null) {
         setPrices(prev => ({ ...prev, [value]: 0 }));
       }
     }
-
+ 
     setNewItem('');
     setItemEditor({ index: -1, value: '' });
   };
-
+ 
   const deleteCodingItem = (category: string, index: number) => {
     Alert.alert('تأكيد الحذف', 'هل تريد حذف هذا التكويد؟', [
       { text: 'إلغاء', style: 'cancel' },
@@ -329,16 +361,16 @@ export default function App() {
       },
     ]);
   };
-
+ 
   const setPermission = (vehicleId: string, key: keyof PermissionSet, value: boolean) =>
     setPermissions(prev => ({ ...prev, [vehicleId]: { ...getPermission(vehicleId), [key]: value } }));
-
+ 
   const filteredRequests = useMemo(() => requests.filter(r => {
     const dateOk = (!reportFrom || r.date >= reportFrom) && (!reportTo || r.date <= reportTo);
     const typeOk = reportType === 'الكل' || r.type === reportType;
     return dateOk && typeOk;
   }), [requests, reportFrom, reportTo, reportType]);
-
+ 
   const exportExcel = async (rows: RequestItem[], title: string) => {
     try {
       const csv = '\ufeff' + [
@@ -346,10 +378,10 @@ export default function App() {
         ...rows.map(r => [r.id,r.date,r.vehicleId,r.driver,r.type,r.qty,r.total,r.status,r.notes || '']
           .map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
       ].join('\n');
-
+ 
       const uri = `${FileSystem.cacheDirectory}${title}_${Date.now()}.csv`;
       await FileSystem.writeAsStringAsync(uri, csv, { encoding: FileSystem.EncodingType.UTF8 });
-
+ 
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'تصدير التقرير إلى Excel' });
       } else {
@@ -359,13 +391,13 @@ export default function App() {
       Alert.alert('خطأ', 'تعذر تصدير ملف Excel.');
     }
   };
-
+ 
   const exportPdf = async (rows: RequestItem[], title: string) => {
     try {
       const body = rows.map(r =>
         `<tr><td>${escapeHtml(r.id)}</td><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.vehicleId)}</td><td>${escapeHtml(r.type)}</td><td>${r.qty}</td><td>${money(r.total)}</td></tr>`
       ).join('');
-
+ 
       const html = `<html dir="rtl"><head><meta charset="utf-8"><style>
         body{font-family:Arial;padding:24px}h1{text-align:center}
         table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:8px;text-align:center}
@@ -373,7 +405,7 @@ export default function App() {
       <p>الإجمالي: ${money(rows.reduce((s,r)=>s+r.total,0))}</p>
       <table><tr><th>العملية</th><th>التاريخ</th><th>السيارة</th><th>النوع</th><th>الكمية</th><th>التكلفة</th></tr>${body}</table>
       </body></html>`;
-
+ 
       const file = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf', dialogTitle: 'تصدير التقرير PDF' });
@@ -384,7 +416,7 @@ export default function App() {
       Alert.alert('خطأ', 'تعذر إنشاء ملف PDF.');
     }
   };
-
+ 
   const renderSelect = (
     label: string, value: string, values: string[], onChange: (v: string) => void
   ) => (
@@ -402,12 +434,12 @@ export default function App() {
       </ScrollView>
     </View>
   );
-
+ 
   const renderCoding = () => (
     <View>
       <Text style={styles.sectionTitle}>التكويدات</Text>
       <Text style={styles.helper}>إضافة وتعديل وحذف عناصر التكويد المستخدمة في نماذج الطلبات.</Text>
-
+ 
       {Object.keys(codingMap).map(category => (
         <TouchableOpacity key={category} style={styles.menuCard}
           onPress={() => setCodingModal(category)}>
@@ -419,7 +451,7 @@ export default function App() {
           <Text style={styles.chevron}>‹</Text>
         </TouchableOpacity>
       ))}
-
+ 
       <TouchableOpacity style={styles.menuCard} onPress={() => setAdminTab('pricing')}>
         <View style={styles.menuIcon}><Text style={{fontSize:20}}>﷼</Text></View>
         <View style={{flex:1}}>
@@ -430,67 +462,111 @@ export default function App() {
       </TouchableOpacity>
     </View>
   );
-
-  const renderPricing = () => (
-    <View>
-      <View style={styles.pageHeaderRow}>
-        <TouchableOpacity onPress={() => setAdminTab('coding')}>
-          <Text style={styles.backText}>رجوع</Text>
-        </TouchableOpacity>
-        <Text style={styles.sectionTitle}>إدارة الأسعار</Text>
-      </View>
-
-      {Object.keys(prices).map(key => (
-        <View key={key} style={[styles.card,{flexDirection:'row-reverse',alignItems:'center'}]}>
-          <View style={{flex:1}}>
-            <Text style={styles.cardTitle}>{key}</Text>
-            <Text style={styles.cardText}>السعر الحالي: {money(prices[key])}</Text>
-          </View>
-          <TextInput style={styles.priceInput} keyboardType="numeric"
-            value={String(prices[key])}
-            onChangeText={v => setPrices(p => ({
-              ...p, [key]: Number(v.replace(/[^0-9.]/g,'')) || 0
-            }))} />
+ 
+  const renderPricing = () => {
+    const categories: Record<string, string[]> = {
+      'وقود': fuelTypes,
+      'زيوت': oils,
+      'بطاريات': batteries,
+      'قطع غيار': parts,
+      'إطارات': tires,
+      'صيانة': maintenanceItems,
+    };
+ 
+    return (
+      <View>
+        <View style={styles.pageHeaderRow}>
+          <TouchableOpacity onPress={() => setAdminTab('coding')}>
+            <Text style={styles.backText}>رجوع</Text>
+          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>إدارة الأسعار</Text>
         </View>
-      ))}
-    </View>
-  );
-
-  const renderRequestsAdmin = () => (
-    <View>
-      <Text style={styles.sectionTitle}>طلبات السائقين</Text>
-      {requests.map(req => (
-        <View key={req.id} style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardId}>{req.id}</Text>
-            <Text style={styles.badge}>{req.status}</Text>
-          </View>
-          <Text style={styles.cardTitle}>{req.type} — سيارة {req.vehicleId}</Text>
-          <Text style={styles.cardText}>السائق: {req.driver}</Text>
-          <Text style={styles.cardText}>التاريخ: {req.date} | الكمية: {req.qty}</Text>
-          <Text style={styles.cardText}>التكلفة: {money(req.total)}</Text>
-          {req.station ? <Text style={styles.cardText}>المحطة: {req.station} | الوقود: {req.fuelType}</Text> : null}
-          {req.oilType ? <Text style={styles.cardText}>
-            الزيت: {req.oilType} | العداد: {req.prevOdo} ← {req.currOdo} | المسافة: {req.distance}
-          </Text> : null}
-          {req.imageUri ? <Image source={{uri:req.imageUri}} style={styles.thumb} /> : null}
-          {req.status === 'قيد المراجعة' ? (
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.success}]}
-                onPress={() => updateRequestStatus(req.id,'تم الاعتماد')}>
-                <Text style={styles.btnText}>اعتماد</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.danger}]}
-                onPress={() => updateRequestStatus(req.id,'مرفوض')}>
-                <Text style={styles.btnText}>رفض</Text>
-              </TouchableOpacity>
+ 
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 12}}>
+          {Object.keys(categories).map(cat => (
+            <TouchableOpacity key={cat}
+              style={[styles.choice, adminPricingSubTab === cat && styles.choiceActive, {marginLeft: 6}]}
+              onPress={() => setAdminPricingSubTab(cat)}>
+              <Text style={[styles.choiceText, adminPricingSubTab === cat && styles.choiceTextActive]}>تسعير {cat}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+ 
+        {(categories[adminPricingSubTab] || []).map(key => (
+          <View key={key} style={[styles.card,{flexDirection:'row-reverse',alignItems:'center'}]}>
+            <View style={{flex:1}}>
+              <Text style={styles.cardTitle}>{key}</Text>
+              <Text style={styles.cardText}>السعر الحالي: {money(prices[key] || 0)}</Text>
             </View>
-          ) : null}
-        </View>
-      ))}
-    </View>
-  );
-
+            <TextInput style={styles.priceInput} keyboardType="numeric"
+              value={String(prices[key] ?? 0)}
+              onChangeText={v => setPrices(p => ({
+                ...p, [key]: Number(v.replace(/[^0-9.]/g,'')) || 0
+              }))} />
+          </View>
+        ))}
+      </View>
+    );
+  };
+ 
+  const renderRequestsAdmin = () => {
+    const adminTypes = ['الكل', ...requestTypes];
+    const filteredList = requests.filter(r => adminRequestSubTab === 'الكل' || r.type === adminRequestSubTab);
+ 
+    return (
+      <View>
+        <Text style={styles.sectionTitle}>طلبات السائقين</Text>
+        
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 12}}>
+          {adminTypes.map(t => (
+            <TouchableOpacity key={t}
+              style={[styles.choice, adminRequestSubTab === t && styles.choiceActive, {marginLeft: 6}]}
+              onPress={() => setAdminRequestSubTab(t)}>
+              <Text style={[styles.choiceText, adminRequestSubTab === t && styles.choiceTextActive]}>{t}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+ 
+        {filteredList.length === 0 ? (
+          <Text style={{textAlign: 'center', color: COLORS.muted, marginTop: 20}}>لا توجد طلبات ضمن هذا التصنيف</Text>
+        ) : filteredList.map(req => (
+          <View key={req.id} style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardId}>{req.id}</Text>
+              <Text style={styles.badge}>{req.status}</Text>
+            </View>
+            <Text style={styles.cardTitle}>{req.type} — سيارة {req.vehicleId}</Text>
+            <Text style={styles.cardText}>السائق: {req.driver}</Text>
+            <Text style={styles.cardText}>التاريخ: {req.date} | الكمية: {req.qty}</Text>
+            <Text style={styles.cardText}>القيمة / التكلفة: {money(req.total)}</Text>
+            
+            {req.station ? <Text style={styles.cardText}>المحطة: {req.station} | الوقود: {req.fuelType}</Text> : null}
+            {req.oilType ? <Text style={styles.cardText}>الزيت: {req.oilType} | العداد: {req.prevOdo} ← {req.currOdo} | المسافة: {req.distance}</Text> : null}
+            {req.workshop ? <Text style={styles.cardText}>الورشة: {req.workshop} | المهندس: {req.engineer}</Text> : null}
+            {req.faultType ? <Text style={styles.cardText}>نوع العطل: {req.faultType} | العمل المطلوب: {req.requiredWork}</Text> : null}
+            {req.client ? <Text style={styles.cardText}>العميل: {req.client} | الخدمة: {req.serviceDescription}</Text> : null}
+            {req.notes ? <Text style={styles.cardText}>ملاحظات: {req.notes}</Text> : null}
+ 
+            {req.imageUri ? <Image source={{uri:req.imageUri}} style={styles.thumb} /> : null}
+            
+            {req.status === 'قيد المراجعة' ? (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.success}]}
+                  onPress={() => updateRequestStatus(req.id,'تم الاعتماد')}>
+                  <Text style={styles.btnText}>قبول</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.danger}]}
+                  onPress={() => updateRequestStatus(req.id,'مرفوض')}>
+                  <Text style={styles.btnText}>رفض</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null}
+          </View>
+        ))}
+      </View>
+    );
+  };
+ 
   const renderFleet = () => (
     <View>
       <Text style={styles.sectionTitle}>إدارة السيارات ({fleet.length})</Text>
@@ -510,7 +586,7 @@ export default function App() {
       ))}
     </View>
   );
-
+ 
   const renderAssignments = () => (
     <View>
       <Text style={styles.sectionTitle}>ربط السائقين بالسيارات</Text>
@@ -518,21 +594,21 @@ export default function App() {
         v=>setAssignmentForm(f=>({...f,driver:v})))}
       {renderSelect('السيارة',assignmentForm.vehicleId,fleet.map(v=>v.id),
         v=>setAssignmentForm(f=>({...f,vehicleId:v})))}
-
+ 
       <Text style={styles.label}>تاريخ بداية الربط</Text>
       <TextInput style={styles.input} value={assignmentForm.startDate}
         onChangeText={v=>setAssignmentForm(f=>({...f,startDate:v}))}
         placeholder="YYYY-MM-DD" textAlign="right" />
-
+ 
       <Text style={styles.label}>تاريخ نهاية الربط</Text>
       <TextInput style={styles.input} value={assignmentForm.endDate}
         onChangeText={v=>setAssignmentForm(f=>({...f,endDate:v}))}
         placeholder="YYYY-MM-DD" textAlign="right" />
-
+ 
       <Text style={styles.label}>ملاحظات</Text>
       <TextInput style={styles.input} value={assignmentForm.notes}
         onChangeText={v=>setAssignmentForm(f=>({...f,notes:v}))} textAlign="right" />
-
+ 
       <TouchableOpacity style={styles.primaryBtn} onPress={() => {
         if(!assignmentForm.driver || !assignmentForm.vehicleId) {
           Alert.alert('تنبيه','اختر السائق والسيارة.'); return;
@@ -544,7 +620,7 @@ export default function App() {
       }}>
         <Text style={styles.btnText}>حفظ الربط</Text>
       </TouchableOpacity>
-
+ 
       {assignments.map(a=>(
         <View key={a.id} style={styles.card}>
           <Text style={styles.cardTitle}>{a.driver} ← سيارة {a.vehicleId}</Text>
@@ -557,7 +633,7 @@ export default function App() {
       ))}
     </View>
   );
-
+ 
   const renderPermissions = () => (
     <View>
       <Text style={styles.sectionTitle}>الصلاحيات</Text>
@@ -586,15 +662,15 @@ export default function App() {
       })}
     </View>
   );
-
+ 
   const renderReports = (isAdmin: boolean) => {
     const rows = isAdmin ? filteredRequests : filteredRequests.filter(r=>r.vehicleId===currentUser.id);
     const total = rows.reduce((s,r)=>s+r.total,0);
-
+ 
     return (
       <View>
         <Text style={styles.sectionTitle}>{isAdmin?'التقارير العامة':'تقارير ومصاريف السيارة'}</Text>
-
+ 
         <Text style={styles.label}>من تاريخ</Text>
         <TextInput style={styles.input} value={reportFrom} onChangeText={setReportFrom}
           placeholder="YYYY-MM-DD" textAlign="right" />
@@ -602,13 +678,13 @@ export default function App() {
         <TextInput style={styles.input} value={reportTo} onChangeText={setReportTo}
           placeholder="YYYY-MM-DD" textAlign="right" />
         {renderSelect('نوع التقرير',reportType,['الكل',...requestTypes],setReportType)}
-
+ 
         <View style={styles.summaryCard}>
           <Text style={styles.summaryTitle}>إجمالي المصاريف والطلبات</Text>
           <Text style={styles.summaryValue}>{money(total)}</Text>
           <Text style={styles.summarySub}>{rows.length} عملية</Text>
         </View>
-
+ 
         {isAdmin ? requestTypes.map(t=>{
           const rr=rows.filter(r=>r.type===t);
           return <View key={t} style={styles.reportRow}>
@@ -616,7 +692,7 @@ export default function App() {
             <Text style={{fontWeight:'800'}}>{money(rr.reduce((s,r)=>s+r.total,0))} ({rr.length})</Text>
           </View>;
         }) : null}
-
+ 
         {rows.map(r=>(
           <View key={r.id} style={styles.card}>
             <Text style={styles.cardId}>{r.id} — {r.type}</Text>
@@ -624,7 +700,7 @@ export default function App() {
             <Text style={styles.cardText}>الكمية: {r.qty} | التكلفة: {money(r.total)}</Text>
           </View>
         ))}
-
+ 
         <View style={styles.actionRow}>
           <TouchableOpacity style={[styles.exportBtn,{backgroundColor:COLORS.success}]}
             onPress={()=>exportExcel(rows,isAdmin?'admin-report':'my-report')}>
@@ -638,32 +714,33 @@ export default function App() {
       </View>
     );
   };
-
+ 
   const renderRequestModal = () => {
     if (!serviceTypeModal) return null;
     const price=currentUnitPrice();
     const qty=Number(reqQty)||0;
     const prev=lastOdometer(currentUser?.id||'');
-
+ 
     return (
       <Modal visible animationType="slide" transparent onRequestClose={()=>setServiceTypeModal(null)}>
         <View style={styles.modalOverlay}>
-          <ScrollView contentContainerStyle={styles.modalCenter}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text>
-
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text>
+            
+            {/* ScrollView داخلية لضمان ظهور كافة الحقول وزر الإرسال بشكل ممتاز على الشاشة */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 20}}>
               <View style={styles.infoPill}>
                 <Text style={styles.infoPillText}>رقم العملية: {getNextRequestId()}</Text>
                 <Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text>
               </View>
-
+ 
               {serviceTypeModal==='وقود' ? <>
                 {renderSelect('المحطة',selectedStation,stations,setSelectedStation)}
                 {renderSelect('نوع الوقود',selectedFuel,fuelTypes,setSelectedFuel)}
                 <Text style={styles.label}>سعر اللتر</Text>
                 <TextInput style={styles.input} value={String(price)} editable={false} textAlign="right" />
               </> : null}
-
+ 
               {serviceTypeModal==='زيوت' ? <>
                 {renderSelect('نوع الزيت',selectedOil,oils,setSelectedOil)}
                 {renderSelect('الوحدة',selectedUnit,['دبة','علبة','جالون'],setSelectedUnit)}
@@ -676,41 +753,63 @@ export default function App() {
                   المسافة المقطوعة: {Math.max(0,(Number(currOdometer)||prev)-prev).toLocaleString()} كم
                 </Text>
               </> : null}
-
+ 
               {serviceTypeModal==='بطاريات' ? renderSelect('نوع البطارية',selectedBattery,batteries,setSelectedBattery) : null}
               {serviceTypeModal==='قطع غيار' ? renderSelect('قطعة الغيار',selectedPart,parts,setSelectedPart) : null}
               {serviceTypeModal==='إطارات' ? renderSelect('نوع الإطار',selectedTire,tires,setSelectedTire) : null}
               {serviceTypeModal==='صيانة' ? renderSelect('نوع الصيانة',selectedMaintenance,maintenanceItems,setSelectedMaintenance) : null}
-
-              <Text style={styles.label}>الكمية</Text>
-              <TextInput style={styles.input} keyboardType="numeric" value={reqQty}
-                onChangeText={setReqQty} placeholder="أدخل الكمية" textAlign="right" />
-
-              <Text style={styles.totalText}>الإجمالي: {money(qty*price)}</Text>
-
+ 
+              {serviceTypeModal==='إرسالية صيانة' ? <>
+                <Text style={styles.label}>رقم السيارة</Text>
+                <TextInput style={styles.input} value={currentUser?.id || ''} editable={false} textAlign="right" />
+                <Text style={styles.label}>السائق</Text>
+                <TextInput style={styles.input} value={currentUser?.driver || ''} editable={false} textAlign="right" />
+                {renderSelect('الورشة',selectedWorkshop,workshops,setSelectedWorkshop)}
+                {renderSelect('المهندس',selectedEngineer,engineers,setSelectedEngineer)}
+                <Text style={styles.label}>نوع العطل</Text>
+                <TextInput style={styles.input} value={faultType} onChangeText={setFaultType} placeholder="أدخل نوع العطل" textAlign="right" />
+                <Text style={styles.label}>العمل المطلوب</Text>
+                <TextInput style={styles.input} value={requiredWork} onChangeText={setRequiredWork} placeholder="أدخل العمل المطلوب" textAlign="right" />
+              </> : null}
+ 
+              {serviceTypeModal==='إرسالية بنشر وخدمات' ? <>
+                <Text style={styles.label}>رقم السيارة</Text>
+                <TextInput style={styles.input} value={currentUser?.id || ''} editable={false} textAlign="right" />
+                {renderSelect('العميل',selectedClient,clients,setSelectedClient)}
+                <Text style={styles.label}>الخدمة</Text>
+                <TextInput style={styles.input} value={serviceDescription} onChangeText={setServiceDescription} placeholder="أدخل وصف الخدمة" textAlign="right" />
+              </> : null}
+ 
+              {!['إرسالية صيانة', 'إرسالية بنشر وخدمات'].includes(serviceTypeModal) ? <>
+                <Text style={styles.label}>الكمية</Text>
+                <TextInput style={styles.input} keyboardType="numeric" value={reqQty}
+                  onChangeText={setReqQty} placeholder="أدخل الكمية" textAlign="right" />
+                <Text style={styles.totalText}>الإجمالي: {money(qty*price)}</Text>
+              </> : null}
+ 
               <Text style={styles.label}>الملاحظات</Text>
-              <TextInput style={[styles.input,{minHeight:70}]} value={reqNotes}
+              <TextInput style={[styles.input,{minHeight:60}]} value={reqNotes}
                 onChangeText={setReqNotes} multiline textAlign="right" placeholder="ملاحظات الطلب" />
-
+ 
               <TouchableOpacity style={styles.secondaryBtn} onPress={openImagePicker}>
-                <Text style={styles.btnText}>📷 إرفاق صورة الفاتورة / العداد</Text>
+                <Text style={styles.btnText}>📷 إرفاق صورة الفاتورة / المستند</Text>
               </TouchableOpacity>
-
+ 
               {reqImage ? <Image source={{uri:reqImage}} style={styles.previewImage} /> : null}
-
+ 
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.primary}]}
                   onPress={submitRequest}><Text style={styles.btnText}>إرسال الطلب</Text></TouchableOpacity>
                 <TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#64748B'}]}
                   onPress={()=>setServiceTypeModal(null)}><Text style={styles.btnText}>إلغاء</Text></TouchableOpacity>
               </View>
-            </View>
-          </ScrollView>
+            </ScrollView>
+          </View>
         </View>
       </Modal>
     );
   };
-
+ 
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.loginContainer}>
@@ -730,12 +829,12 @@ export default function App() {
       </SafeAreaView>
     );
   }
-
+ 
   if (currentUser.role === 'admin') {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
-
+ 
         <View style={styles.topHeader}>
           <View>
             <Text style={styles.headerTitle}>لوحة المسؤول</Text>
@@ -743,7 +842,7 @@ export default function App() {
           </View>
           <View style={styles.headerAvatar}><Text style={styles.headerAvatarText}>م</Text></View>
         </View>
-
+ 
         <ScrollView horizontal showsHorizontalScrollIndicator={false}
           style={styles.adminNav} contentContainerStyle={{flexDirection:'row-reverse'}}>
           {[
@@ -756,7 +855,7 @@ export default function App() {
             </TouchableOpacity>
           ))}
         </ScrollView>
-
+ 
         <ScrollView style={styles.content} contentContainerStyle={{paddingBottom:30}}>
           {adminTab==='requests'?renderRequestsAdmin():null}
           {adminTab==='coding'?renderCoding():null}
@@ -766,11 +865,11 @@ export default function App() {
           {adminTab==='permissions'?renderPermissions():null}
           {adminTab==='reports'?renderReports(true):null}
         </ScrollView>
-
+ 
         <TouchableOpacity style={styles.logoutBar} onPress={handleLogout}>
           <Text style={styles.btnText}>تسجيل الخروج</Text>
         </TouchableOpacity>
-
+ 
         <Modal visible={!!codingModal} transparent animationType="slide"
           onRequestClose={()=>setCodingModal(null)}>
           <View style={styles.modalOverlay}>
@@ -778,11 +877,11 @@ export default function App() {
               <Text style={styles.modalTitle}>تكويد {codingModal}</Text>
               <TextInput style={styles.input} value={newItem} onChangeText={setNewItem}
                 placeholder="اسم العنصر" textAlign="right" />
-
+ 
               <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}>
                 <Text style={styles.btnText}>{itemEditor.index>=0?'حفظ التعديل':'إضافة عنصر'}</Text>
               </TouchableOpacity>
-
+ 
               <ScrollView style={{maxHeight:320}}>
                 {codingModal ? codingMap[codingModal].map((item,index)=>(
                   <View key={`${item}-${index}`} style={styles.inlineRow}>
@@ -798,7 +897,7 @@ export default function App() {
                   </View>
                 )) : null}
               </ScrollView>
-
+ 
               <TouchableOpacity style={styles.secondaryBtn} onPress={()=>{
                 setCodingModal(null); setItemEditor({index:-1,value:''}); setNewItem('');
               }}>
@@ -810,11 +909,11 @@ export default function App() {
       </SafeAreaView>
     );
   }
-
+ 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-
+ 
       <View style={styles.topHeader}>
         <View>
           <Text style={styles.headerTitle}>السيارة {currentUser.id}</Text>
@@ -822,19 +921,31 @@ export default function App() {
         </View>
         <View style={styles.headerAvatar}><Text style={styles.headerAvatarText}>🚗</Text></View>
       </View>
-
+ 
       <ScrollView style={styles.content} contentContainerStyle={{paddingBottom:30}}>
         {userTab==='service' ? (
           <View>
             <Text style={styles.sectionTitle}>الخدمات والطلبات</Text>
-            {requestTypes.map((type,index)=>(
-              <TouchableOpacity key={type} style={styles.serviceCard}
-                onPress={()=>setServiceTypeModal(type)}>
+            {[
+              { type: 'وقود', icon: '⛽' },
+              { type: 'زيوت', icon: '🛢️' },
+              { type: 'بطاريات', icon: '🔋' },
+              { type: 'قطع غيار', icon: '🔧' },
+              { type: 'صيانة', icon: '🛠️' },
+              { type: 'إطارات', icon: '🛞' },
+              { type: 'إرسالية صيانة', icon: '📝' },
+              { type: 'إرسالية بنشر وخدمات', icon: '🚗' },
+            ].map((item, index)=>(
+              <TouchableOpacity key={item.type} style={styles.serviceCard}
+                onPress={()=>{
+                  setReqImage(undefined);
+                  setServiceTypeModal(item.type);
+                }}>
                 <View style={styles.serviceIcon}>
-                  <Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛠️','🛞'][index]}</Text>
+                  <Text style={{fontSize:25}}>{item.icon}</Text>
                 </View>
                 <View style={{flex:1}}>
-                  <Text style={styles.serviceTitle}>طلب {type}</Text>
+                  <Text style={styles.serviceTitle}>طلب {item.type}</Text>
                   <Text style={styles.serviceSub}>إنشاء طلب جديد وإرفاق المستند</Text>
                 </View>
                 <Text style={styles.chevron}>‹</Text>
@@ -842,24 +953,7 @@ export default function App() {
             ))}
           </View>
         ) : null}
-
-        {userTab==='my_requests' ? (
-          <View>
-            <Text style={styles.sectionTitle}>طلباتي</Text>
-            {requests.filter(r=>r.vehicleId===currentUser.id).map(r=>(
-              <View key={r.id} style={styles.card}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardId}>{r.id}</Text>
-                  <Text style={styles.badge}>{r.status}</Text>
-                </View>
-                <Text style={styles.cardTitle}>{r.type}</Text>
-                <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
-                <Text style={styles.cardText}>التكلفة: {money(r.total)}</Text>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
+ 
         {userTab==='vehicle_info' ? (
           <View>
             <Text style={styles.sectionTitle}>بيانات السيارة</Text>
@@ -870,9 +964,9 @@ export default function App() {
             </View>
           </View>
         ) : null}
-
+ 
         {userTab==='reports' ? renderReports(false) : null}
-
+ 
         {userTab==='settings' ? (
           <View>
             <Text style={styles.sectionTitle}>إعدادات الحساب</Text>
@@ -880,16 +974,16 @@ export default function App() {
               <Text style={styles.label}>اسم السائق</Text>
               <TextInput style={styles.input} value={editDriverName}
                 onChangeText={setEditDriverName} textAlign="right" />
-
+ 
               <Text style={styles.label}>كلمة المرور الجديدة</Text>
               <TextInput style={styles.input} secureTextEntry value={newPassword}
                 onChangeText={setNewPassword} textAlign="right" />
-
+ 
               <TouchableOpacity style={styles.primaryBtn}
                 onPress={()=>Alert.alert('تم الحفظ','تم حفظ التعديلات محلياً.')}>
                 <Text style={styles.btnText}>حفظ التعديلات</Text>
               </TouchableOpacity>
-
+ 
               <TouchableOpacity style={[styles.logoutBar,{marginTop:10}]}
                 onPress={handleLogout}>
                 <Text style={styles.btnText}>تسجيل الخروج</Text>
@@ -898,10 +992,10 @@ export default function App() {
           </View>
         ) : null}
       </ScrollView>
-
+ 
       <View style={styles.driverNav}>
         {[
-          ['service','الخدمات'],['my_requests','طلباتي'],['vehicle_info','السيارة'],
+          ['service','الخدمات'],['vehicle_info','السيارة'],
           ['reports','التقارير'],['settings','الإعدادات']
         ].map(([key,label])=>(
           <TouchableOpacity key={key} style={styles.driverNavItem}
@@ -910,12 +1004,12 @@ export default function App() {
           </TouchableOpacity>
         ))}
       </View>
-
+ 
       {renderRequestModal()}
     </SafeAreaView>
   );
 }
-
+ 
 const styles = StyleSheet.create({
   container:{flex:1,backgroundColor:COLORS.bg},
   loginContainer:{flex:1,backgroundColor:COLORS.bg,justifyContent:'center',alignItems:'center',padding:20},
@@ -979,8 +1073,7 @@ const styles = StyleSheet.create({
   deleteText:{color:COLORS.danger,fontWeight:'800',textAlign:'right',marginTop:5},
   thumb:{width:55,height:55,borderRadius:8,marginTop:8,alignSelf:'flex-end'},
   modalOverlay:{flex:1,backgroundColor:'rgba(15,23,42,.55)',justifyContent:'center'},
-  modalCenter:{padding:16,justifyContent:'center'},
-  modalContent:{backgroundColor:'#fff',borderRadius:20,padding:18,maxHeight:'92%'},
+  modalContent:{backgroundColor:'#fff',borderRadius:20,padding:18,maxHeight:'90%',width:'92%',alignSelf:'center'},
   modalTitle:{textAlign:'right',fontSize:20,fontWeight:'900',color:COLORS.text,marginBottom:12},
   infoPill:{flexDirection:'row-reverse',justifyContent:'space-between',backgroundColor:'#F8FAFC',borderRadius:10,padding:10,marginBottom:8},
   infoPillText:{color:COLORS.muted,fontSize:12,fontWeight:'700'},
