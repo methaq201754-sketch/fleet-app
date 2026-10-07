@@ -12,11 +12,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "37"
+      "buildNumber": "38"
     },
     "android": {
       "package": "com.fleet.management",
-      "versionCode": 37
+      "versionCode": 38
     }
   }
 }
