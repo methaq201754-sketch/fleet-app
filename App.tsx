@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import {  StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert,  Modal, SafeAreaView, StatusBar, Switch, Image} from 'react-native';
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert, Modal, SafeAreaView, StatusBar, Switch, Image, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 
-const APP_VERSION = '1.27.4';
-const APP_BUILD = '38';
+const APP_VERSION = '1.28.3';
+const APP_BUILD = '39';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -17,7 +17,7 @@ const COLORS = {
 type Vehicle = {
   id: string; name: string; driver: string; status: string; type: string;
   model: string; payload: string; fuelType: string; engineNo: string; chassisNo: string;
-  ownership?: 'شركة' | 'خاصة';
+  ownership?: string;
 };
 
 type RequestItem = {
@@ -27,6 +27,9 @@ type RequestItem = {
   itemName?: string; prevOdo?: number; currOdo?: number; distance?: number;
   workshop?: string; engineer?: string; faultType?: string; requiredWork?: string;
   client?: string; serviceDescription?: string; workflow?: string;
+  routeStage?: string; approvals?: { role: string; status: string }[];
+  // حقول طلب الرحلة
+  taskType?: string; destination?: string; startDate?: string; tripDuration?: string; returnDate?: string; custody?: string;
 };
 
 type PermissionSet = {
@@ -43,49 +46,9 @@ type Assignment = {
 };
 
 const INITIAL_FLEET: Vehicle[] = [
-  { id: '22618', name: 'قاطرة فولفو 2002 رقم 22618', driver: 'عبد الغني علي دحان', status: 'في الخدمة', type: 'شاحنة', model: '2002', payload: '40 طن', fuelType: 'ديزل', engineNo: 'ENG-22618', chassisNo: 'CHS-22618' },
-  { id: '36040', name: 'شاحنة فولفو 2013 رقم 36040', driver: 'حافظ عبده محمد النينه', status: 'في الخدمة', type: 'شاحنة', model: '2013', payload: '35 طن', fuelType: 'ديزل', engineNo: 'ENG-36040', chassisNo: 'CHS-36040' },
-  { id: '28336', name: 'متسوبيشي فوزو 2012 رقم 28336', driver: 'عبد الله احمد عبد الله', status: 'في الخدمة', type: 'دينا', model: '2012', payload: '7 طن', fuelType: 'ديزل', engineNo: 'ENG-28336', chassisNo: 'CHS-28336' },
-  { id: '31538', name: 'ايسوزو 2016 رقم 31538', driver: 'خالد عثمان سعيد', status: 'في الخدمة', type: 'دينا', model: '2016', payload: '5 طن', fuelType: 'ديزل', engineNo: 'ENG-31538', chassisNo: 'CHS-31538' },
-  { id: '34552', name: 'ايسوزو 2015 رقم 34552', driver: 'عبد الاله محمد احمد', status: 'في الخدمة', type: 'دينا', model: '2015', payload: '5 طن', fuelType: 'ديزل', engineNo: 'ENG-34552', chassisNo: 'CHS-34552' },
-  { id: '33230', name: 'بابور اسيوزا 2016 رقم 33230', driver: 'سامي عبدالنور', status: 'في الخدمة', type: 'شاحنة', model: '2016', payload: '10 طن', fuelType: 'ديزل', engineNo: 'ENG-33230', chassisNo: 'CHS-33230' },
-  { id: '34208', name: 'ايسوزو 2020 رقم 34208', driver: 'محمد عبده محمد', status: 'في الخدمة', type: 'دينا', model: '2020', payload: '5 طن', fuelType: 'ديزل', engineNo: 'ENG-34208', chassisNo: 'CHS-34208' },
-  { id: '28807', name: 'دينا متسوبيشي 2012 رقم 28807', driver: 'عفيف سعيد محمد', status: 'في الخدمة', type: 'دينا', model: '2012', payload: '6 طن', fuelType: 'ديزل', engineNo: 'ENG-28807', chassisNo: 'CHS-28807' },
-  { id: '29485', name: 'دينا متسوبيشي 2013 رقم 29485', driver: 'حمود سرحان', status: 'في الخدمة', type: 'دينا', model: '2013', payload: '6 طن', fuelType: 'ديزل', engineNo: 'ENG-29485', chassisNo: 'CHS-29485' },
-  { id: '30646', name: 'دينا متسوبيشي 2014 رقم 30646', driver: 'عبده محمد النينه', status: 'في الخدمة', type: 'دينا', model: '2014', payload: '6 طن', fuelType: 'ديزل', engineNo: 'ENG-30646', chassisNo: 'CHS-30646' },
-  { id: '36697', name: 'دينا متسوبيشي 2013 رقم 36697', driver: 'حسام عبده سالم', status: 'في الخدمة', type: 'دينا', model: '2013', payload: '6 طن', fuelType: 'ديزل', engineNo: 'ENG-36697', chassisNo: 'CHS-36697' },
-  { id: '34451', name: 'باص كوستر 2012', driver: 'عماد علي دحان', status: 'في الخدمة', type: 'باص', model: '2012', payload: '30 ركاب', fuelType: 'ديزل', engineNo: 'ENG-34451', chassisNo: 'CHS-34451' },
-  { id: '23317', name: 'دايهاتسو قلاب موديل 2004', driver: 'محمد محسن', status: 'في الخدمة', type: 'قلاب', model: '2004', payload: '3 طن', fuelType: 'بنزين', engineNo: 'ENG-23317', chassisNo: 'CHS-23317' },
-  { id: '28185', name: 'دينا متسوبيشي 2010', driver: 'عبد الغني علي دحان', status: 'في الخدمة', type: 'دينا', model: '2010', payload: '6 طن', fuelType: 'ديزل', engineNo: 'ENG-28185', chassisNo: 'CHS-28185' },
-  { id: '31457', name: 'لاندكروزر صالون 2012', driver: 'رشاد عبدالحميد', status: 'في الخدمة', type: 'صالون', model: '2012', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-31457', chassisNo: 'CHS-31457' },
-  { id: '46383', name: 'رافور تويوتا 2020', driver: 'حمدي شريف', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2020', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-46383', chassisNo: 'CHS-46383' },
-  { id: '29732', name: 'لاندكروزر صالون 2011', driver: 'عامر محمد علي نعمان', status: 'في الخدمة', type: 'صالون', model: '2011', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-29732', chassisNo: 'CHS-29732' },
-  { id: '139614', name: 'رافور تويوتا 2020', driver: 'وسيم عامر محمد علي', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2020', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-139614', chassisNo: 'CHS-139614' },
-  { id: '161777', name: 'تويوتا رافور 2021', driver: 'احمد لطفي عبد الحميد', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2021', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-161777', chassisNo: 'CHS-161777' },
-  { id: '53665', name: 'جيب 2014', driver: 'وهيب عبدالحميد', status: 'في الخدمة', type: 'جيب', model: '2014', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-53665', chassisNo: 'CHS-53665' },
-  { id: '27750', name: 'فرتشنار تويوتا 2010', driver: 'لطفي سعيد علي', status: 'في الخدمة', type: 'جيب', model: '2010', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-27750', chassisNo: 'CHS-27750' },
-  { id: '30551', name: 'فرتشنار تويوتا 2014', driver: 'عبدالله الوردي', status: 'في الخدمة', type: 'جيب', model: '2014', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-30551', chassisNo: 'CHS-30551' },
-  { id: '29015', name: 'هيلوكس غمارة 2010', driver: 'ماجد عبده فارع', status: 'في الخدمة', type: 'بيك أب', model: '2010', payload: '1.5 طن', fuelType: 'بنزين', engineNo: 'ENG-29015', chassisNo: 'CHS-29015' },
-  { id: '13287', name: 'هيلوكس غمارتين ديزل 2014', driver: 'مروان الفقية', status: 'في الخدمة', type: 'بيك أب', model: '2014', payload: '1.5 طن', fuelType: 'ديزل', engineNo: 'ENG-13287', chassisNo: 'CHS-13287' },
-  { id: '44972', name: 'سوزكي جيمني 2015', driver: 'صابر جواد', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2015', payload: '4 ركاب', fuelType: 'بنزين', engineNo: 'ENG-44972', chassisNo: 'CHS-44972' },
-  { id: '25749', name: 'هيلوكس غماره 2013', driver: 'محمد عبد القوي الشوافي', status: 'في الخدمة', type: 'بيك أب', model: '2013', payload: '1.5 طن', fuelType: 'بنزين', engineNo: 'ENG-25749', chassisNo: 'CHS-25749' },
-  { id: '26519', name: 'هليوكس غمارتين 2008', driver: 'الخدمات', status: 'في الخدمة', type: 'بيك أب', model: '2008', payload: '1.5 طن', fuelType: 'بنزين', engineNo: 'ENG-26519', chassisNo: 'CHS-26519' },
-  { id: '20040', name: 'هواندي توسان 2012', driver: 'محمد النعماني', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2012', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-20040', chassisNo: 'CHS-20040' },
-  { id: '45551', name: 'زوكي جمني 2013', driver: 'عبد الله مكرد', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2013', payload: '4 ركاب', fuelType: 'بنزين', engineNo: 'ENG-45551', chassisNo: 'CHS-45551' },
-  { id: '19404', name: 'باص كوستر 2004', driver: 'يزيد عبد الواسع', status: 'في الخدمة', type: 'باص', model: '2004', payload: '30 ركاب', fuelType: 'ديزل', engineNo: 'ENG-19404', chassisNo: 'CHS-19404' },
-  { id: '46166', name: 'دايهاتسو-تريوس', driver: 'سالم', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2012', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-46166', chassisNo: 'CHS-46166' },
-  { id: '34189', name: 'هواندي توسان 2014', driver: 'رمزي الماريو', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2014', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-34189', chassisNo: 'CHS-34189' },
-  { id: '46379', name: 'فوشنار 2015', driver: 'عبدالفتاح درهم', status: 'في الخدمة', type: 'جيب', model: '2015', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-46379', chassisNo: 'CHS-46379' },
-  { id: '43166', name: 'دايهاتسو تريوس 2013', driver: 'هاني فيصل', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2013', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-43166', chassisNo: 'CHS-43166' },
-  { id: '46140', name: 'باص كوستر 2012 جديد بدون رقم', driver: 'جميل قائد سعيد', status: 'في الخدمة', type: 'باص', model: '2012', payload: '30 ركاب', fuelType: 'ديزل', engineNo: 'ENG-46140', chassisNo: 'CHS-46140' },
-  { id: '27949', name: 'دايهاتسو طويل 2010 رقم 27949', driver: 'مصطفى المخلافي', status: 'في الخدمة', type: 'دينا', model: '2010', payload: '4 طن', fuelType: 'بنزين', engineNo: 'ENG-27949', chassisNo: 'CHS-27949' },
-  { id: '54446', name: 'هونداي توسان 2020', driver: 'محمد صادق سليمان', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2020', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-54446', chassisNo: 'CHS-54446' },
-  { id: '54825', name: 'هونداي توسان 2020', driver: 'اشرف عبد القادر', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2020', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-54825', chassisNo: 'CHS-54825' },
-  { id: '43661', name: 'دايهاتسو تريوس 2015', driver: 'سالم باوزير', status: 'في الخدمة', type: 'سيارة صغيرة', model: '2015', payload: '5 ركاب', fuelType: 'بنزين', engineNo: 'ENG-43661', chassisNo: 'CHS-43661' },
-  { id: '16501', name: 'هيلوكس غماره 2014', driver: 'اشرف محفوظ', status: 'في الخدمة', type: 'بيك أب', model: '2014', payload: '1.5 طن', fuelType: 'بنزين', engineNo: 'ENG-16501', chassisNo: 'CHS-16501' },
-  { id: '43998', name: 'تويوتا هيلوكس غمارتين دبل 2021', driver: 'عبدالرقيب عبدالوهاب', status: 'في الخدمة', type: 'بيك أب', model: '2021', payload: '1.5 طن', fuelType: 'ديزل', engineNo: 'ENG-43998', chassisNo: 'CHS-43998' },
-  { id: '49039', name: 'تويوتا فور تشنر 2013', driver: 'خالد الشراعي', status: 'في الخدمة', type: 'جيب', model: '2013', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-49039', chassisNo: 'CHS-49039' },
-  { id: '56989', name: 'تويوتا فور تشنر 2015', driver: 'نبيل الشوافي', status: 'في الخدمة', type: 'جيب', model: '2015', payload: '7 ركاب', fuelType: 'بنزين', engineNo: 'ENG-56989', chassisNo: 'CHS-56989' },
+  { id: '22618', name: 'قاطرة فولفو 2002 رقم 22618', driver: 'عبد الغني علي دحان', status: 'في الخدمة', type: 'شاحنة', model: '2002', payload: '40 طن', fuelType: 'ديزل', engineNo: 'ENG-22618', chassisNo: 'CHS-22618', ownership: 'سيارات الشركة' },
+  { id: '36040', name: 'شاحنة فولفو 2013 رقم 36040', driver: 'حافظ عبده محمد النينه', status: 'في الخدمة', type: 'شاحنة', model: '2013', payload: '35 طن', fuelType: 'ديزل', engineNo: 'ENG-36040', chassisNo: 'CHS-36040', ownership: 'سيارات الشركة' },
+  { id: '28336', name: 'متسوبيشي فوزو 2012 رقم 28336', driver: 'عبد الله احمد عبد الله', status: 'في الخدمة', type: 'دينا', model: '2012', payload: '7 طن', fuelType: 'ديزل', engineNo: 'ENG-28336', chassisNo: 'CHS-28336', ownership: 'سيارات الشركة' },
 ];
 
 const DEFAULT_PERMISSIONS: PermissionSet = {
@@ -105,6 +68,8 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [darkMode, setDarkMode] = useState(false);
+
   const [fleet, setFleet] = useState<Vehicle[]>(INITIAL_FLEET);
   const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
   const [fuelTypes, setFuelTypes] = useState<string[]>(['ديزل', 'بترول']);
@@ -116,41 +81,50 @@ export default function App() {
   const [workshops, setWorkshops] = useState<string[]>(['ورشة المركز الرئيسي', 'ورشة الصناعية']);
   const [clients, setClients] = useState<string[]>(['شركة الألوان', 'الشركة العامة']);
   const [engineers, setEngineers] = useState<string[]>(['مهندس أحمد', 'مهندس محمد']);
+  const [carOwners, setCarOwners] = useState<string[]>(['سيارات الشركة', 'السيارات الخاصة']);
+  const [tripTaskTypes, setTripTaskTypes] = useState<string[]>(['مهمة رسمية', 'نقل بضائع', 'صيانة خارجية']);
+  const [destinations, setDestinations] = useState<string[]>(['صنعاء', 'المخا', 'العدين', 'إب']);
 
   const [prices, setPrices] = useState<Record<string, number>>({
     'ديزل': 1200, 'بترول': 1200, 'تويوتا': 4500, 'ليكوي مولي': 6000,
     'ناشيونال': 4000, 'بطارية 70 أمبير': 65000, 'بطارية 100 أمبير': 85000,
     'فلتر زيت': 8000, 'فلتر هواء': 12000, 'فحمات فرامل': 25000,
     'إطار 12.00R20': 85000, 'إطار 215/75R17.5': 65000,
-    'صيانة عامة': 10000, 'كهرباء': 10000, 'ميكانيكا': 10000,
   });
 
   const [requests, setRequests] = useState<RequestItem[]>([
     {
       id: 'REQ-1001', vehicleId: '22618', driver: 'عبد الغني علي دحان', type: 'وقود',
       date: '2026-10-01', qty: 50, total: 60000, station: 'محطة الشركة',
-      fuelType: 'ديزل', status: 'تمت الموافقة', workflow: 'تمت الموافقة', notes: 'تم التعبئة للرحلة'
-    },
-    {
-      id: 'REQ-1002', vehicleId: '36040', driver: 'حافظ عبده محمد النينه', type: 'زيوت',
-      date: '2026-10-01', qty: 4, total: 18000, oilType: 'تويوتا', unit: 'دبة',
-      prevOdo: 124000, currOdo: 129000, distance: 5000,
-      status: 'تحت المراجعة', workflow: 'المسؤول المباشر', notes: 'تغيير زيت دوري'
-    },
+      fuelType: 'ديزل', status: 'تمت الموافقة', workflow: 'تمت الموافقة',
+      approvals: [{ role: 'المسؤول المباشر', status: 'موافق' }, { role: 'الخدمات الإدارية', status: 'موافق' }]
+    }
   ]);
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionSet>>({});
-  const [userTab, setUserTab] = useState('service');
+  
+  // مسارات الطلبات واعدادات المسؤول المباشر
+  const [routeSettings, setRouteSettings] = useState<Record<string, string[]>>({
+    'وقود': ['المسؤول المباشر', 'الخدمات الإدارية'],
+    'زيوت': ['المسؤول المباشر', 'الخدمات الإدارية'],
+    'صيانة': ['المسؤول المباشر', 'الورشة المركزية'],
+    'طلب رحلة': ['المسؤول المباشر', 'إدارة الحركة']
+  });
+  const [directManagers, setDirectManagers] = useState<string[]>(['حمود سرحان', 'عبد الغني علي دحان']);
+
+  const [userTab, setUserTab] = useState('main'); // main, reports, settings, notifications, about
   const [adminTab, setAdminTab] = useState('requests');
+  const [adminControlSubTab, setAdminControlSubTab] = useState('routes');
   const [adminRequestSubTab, setAdminRequestSubTab] = useState('وقود');
   const [adminPricingSubTab, setAdminPricingSubTab] = useState('وقود');
-  
+
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [itemEditor, setItemEditor] = useState({ index: -1, value: '' });
   const [newItem, setNewItem] = useState('');
 
+  // قيم نموذج الطلب الحالي
   const [selectedStation, setSelectedStation] = useState(stations[0]);
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
   const [selectedOil, setSelectedOil] = useState(oils[0]);
@@ -174,58 +148,60 @@ export default function App() {
   const [serviceUserClient, setServiceUserClient] = useState(clients[0]);
   const [serviceUserWorkshop, setServiceUserWorkshop] = useState(workshops[0]);
   const [serviceUserEngineer, setServiceUserEngineer] = useState(engineers[0]);
-  const [serviceUserNote, setServiceUserNote] = useState('');
   
+  // حقول طلب الرحلة
+  const [tripTaskType, setTripTaskType] = useState(tripTaskTypes[0]);
+  const [tripDestination, setTripDestination] = useState(destinations[0]);
+  const [tripStartDate, setTripStartDate] = useState(TODAY());
+  const [tripDuration, setTripDuration] = useState('1 يوم');
+  const [tripReturnDate, setTripReturnDate] = useState(TODAY());
+  const [tripCustody, setTripCustody] = useState('');
+
+  // تبويبات داخل نافذة الطلب (شبه طلب إجازة)
+  const [requestModalTab, setRequestModalTab] = useState<'create' | 'report'>('create');
+  const [userReportFilterStatus, setUserReportFilterStatus] = useState('كل الحالات');
+
+  // إرسال إشعارات عامة من المسؤول
+  const [notificationsList, setNotificationsList] = useState<Array<{ id: string; title: string; body: string; date: string; target: string }>>([
+    { id: 'notif-1', title: 'تنبيه نظام الأسطول', body: 'تم تحديث أسعار المحروقات والزيوت.', date: TODAY(), target: 'الكل' }
+  ]);
+  const [adminNotifTitle, setAdminNotifTitle] = useState('');
+  const [adminNotifBody, setAdminNotifBody] = useState('');
+  const [adminNotifTarget, setAdminNotifTarget] = useState('الكل');
+
+  // تحرير بيانات المستخدم / السائق
   const [editDriverName, setEditDriverName] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [reportFrom, setReportFrom] = useState('');
-  const [reportTo, setReportTo] = useState('');
-  const [reportType, setReportType] = useState('الكل');
-
-  const [assignmentForm, setAssignmentForm] = useState<Assignment>({
-    id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
-  });
-  const [driverDropdownVisible, setDriverDropdownVisible] = useState(false);
+  
+  // إدارة السيارات
   const [fleetCategory, setFleetCategory] = useState('جميع السيارات');
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [vehicleEditId, setVehicleEditId] = useState<string | null>(null);
   const [vehicleForm, setVehicleForm] = useState<Vehicle>({
     id: '', name: '', driver: '', status: 'في الخدمة', type: '', model: '',
-    payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'شركة'
+    payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'سيارات الشركة'
   });
 
-  const getPermission = (vehicleId: string): PermissionSet =>
-    permissions[vehicleId] || DEFAULT_PERMISSIONS;
-
-  const getNextRequestId = () => {
-    const nums = requests.map(r => Number(String(r.id).replace(/\D/g, '')) || 0);
-    return `REQ-${Math.max(1000, ...nums) + 1}`;
-  };
-
-  const lastOdometer = (vehicleId: string) => {
-    const rows = requests.filter(r => r.vehicleId === vehicleId && r.type === 'زيوت' && r.currOdo != null);
-    return rows.length ? Number(rows[rows.length - 1].currOdo) || 0 : 0;
-  };
-
-  const requestTypes = ['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات', 'إرسالية صيانة', 'إرسالية بنشر وخدمات'];
+  // منسدلة السيارات بربط السائقين
+  const [vehicleDropdownVisible, setVehicleDropdownVisible] = useState(false);
+  const [assignmentForm, setAssignmentForm] = useState<Assignment>({
+    id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
+  });
 
   const codingMap: Record<string, string[]> = {
     'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
     'الإطارات': tires, 'المحطات': stations, 'الصيانة': maintenanceItems,
     'الورش': workshops, 'العملاء': clients, 'المهندسين': engineers,
+    'مالك السيارة': carOwners, 'أنواع المهام للرحلات': tripTaskTypes, 'الوجهات': destinations
   };
 
   const codingSetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
     'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
     'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
     'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
-    'المهندسين': setEngineers,
+    'المهندسين': setEngineers, 'مالك السيارة': setCarOwners,
+    'أنواع المهام للرحلات': setTripTaskTypes, 'الوجهات': setDestinations
   };
-
-  const driverNames = useMemo(
-    () => Array.from(new Set(fleet.map(v => v.driver).filter(Boolean))),
-    [fleet]
-  );
 
   const assignmentVehicle = fleet.find(v => v.id === assignmentForm.vehicleId.trim());
 
@@ -249,13 +225,13 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(null); setUserTab('service'); setAdminTab('requests');
+    setCurrentUser(null); setUserTab('main'); setAdminTab('requests');
   };
 
   const resetRequestForm = () => {
     setReqQty(''); setCurrOdometer(''); setReqNotes(''); setReqImage(undefined);
     setFaultType(''); setRequiredWork(''); setServiceDescription('');
-    setServiceUserNote('');
+    setTripCustody('');
   };
 
   const openImagePicker = () => {
@@ -296,12 +272,18 @@ export default function App() {
 
   const submitRequest = () => {
     if (!currentUser || !serviceTypeModal) return;
+    const nextId = `REQ-${Math.floor(1000 + Math.random() * 9000)}`;
+    const route = routeSettings[serviceTypeModal] || ['المسؤول المباشر'];
+
     const item: RequestItem = {
-      id: getNextRequestId(), vehicleId: currentUser.id, driver: currentUser.driver,
+      id: nextId, vehicleId: currentUser.id, driver: currentUser.driver,
       type: serviceTypeModal, date: TODAY(), qty: 1, total: 0,
-      status: 'تحت المراجعة', workflow: 'المسؤول المباشر',
+      status: 'تحت المراجعة', workflow: route[0] || 'المسؤول المباشر',
+      routeStage: route[0],
       notes: reqNotes, imageUri: reqImage,
+      approvals: route.map(r => ({ role: r, status: 'انتظار' }))
     };
+
     if (serviceTypeModal === 'وقود') {
       const qty = Number(reqQty);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
@@ -309,68 +291,50 @@ export default function App() {
       item.station = selectedStation; item.fuelType = selectedFuel;
     } else if (serviceTypeModal === 'زيوت') {
       const qty = Number(reqQty);
-      const odo = Number(currOdometer);
-      const prev = lastOdometer(currentUser.id);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
-      if (!odo || odo < prev) { Alert.alert('تنبيه', `العداد الحالي يجب أن يكون أكبر أو يساوي ${prev}.`); return; }
       item.qty = qty; item.total = qty * currentUnitPrice(); item.oilType = selectedOil;
-      item.unit = selectedUnit; item.prevOdo = prev; item.currOdo = odo; item.distance = odo - prev;
-    } else if (serviceTypeModal === 'بطاريات') {
-      item.itemName = selectedBattery; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
-    } else if (serviceTypeModal === 'قطع غيار') {
-      item.itemName = selectedPart; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
-    } else if (serviceTypeModal === 'إطارات') {
-      item.itemName = selectedTire; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
-    } else if (serviceTypeModal === 'صيانة') {
-      item.itemName = selectedMaintenance; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
-      item.workshop = selectedWorkshop; item.engineer = selectedEngineer;
-      item.faultType = faultType; item.requiredWork = requiredWork;
-    } else if (serviceTypeModal === 'إرسالية صيانة') {
-      item.qty = 1;
-      item.workshop = serviceUserWorkshop;
-      item.engineer = serviceUserEngineer;
-      item.client = serviceUserClient;
-      item.faultType = faultType;
-      item.requiredWork = requiredWork;
-      item.notes = serviceUserNote;
-    } else if (serviceTypeModal === 'إرسالية بنشر وخدمات') {
-      item.qty = 1;
-      item.client = serviceUserClient;
-      item.serviceDescription = serviceDescription;
-      item.notes = reqNotes;
+    } else if (serviceTypeModal === 'طلب رحلة') {
+      item.taskType = tripTaskType;
+      item.destination = tripDestination;
+      item.startDate = tripStartDate;
+      item.tripDuration = tripDuration;
+      item.returnDate = tripReturnDate;
+      item.custody = tripCustody;
     }
     
-    setRequests(prev => [...prev, item]);
+    setRequests(prev => [item, ...prev]);
     setServiceTypeModal(null);
     resetRequestForm();
-    setUserTab('service');
-    Alert.alert('تم إرسال الطلب', 'تم إرسال الطلب بنجاح ويمكن متابعته من لوحة المسؤول.');
+    Alert.alert('تم إرسال الطلب', `تم إرسال طلب ${serviceTypeModal} بنجاح إلى ${route[0]}.`);
   };
 
-  const advanceRequest = (id: string) => {
+  const acceptRequestAdmin = (id: string) => {
     setRequests(prev => prev.map(r => {
       if (r.id !== id) return r;
-      const stage = r.workflow || 'المسؤول المباشر';
-      if (stage === 'المسؤول المباشر') return { ...r, workflow: 'الخدمات الإدارية', status: 'تحت المراجعة' };
-      if (stage === 'الخدمات الإدارية') return { ...r, workflow: 'المسؤول', status: 'تحت المراجعة' };
-      if (stage === 'المسؤول') return { ...r, workflow: 'تمت الموافقة', status: 'تمت الموافقة' };
-      return r;
+      const currentRoute = routeSettings[r.type] || ['المسؤول المباشر', 'الخدمات الإدارية'];
+      const currentIndex = currentRoute.indexOf(r.workflow || currentRoute[0]);
+      if (currentIndex < currentRoute.length - 1 && currentIndex !== -1) {
+        const nextStage = currentRoute[currentIndex + 1];
+        return {
+          ...r,
+          workflow: nextStage,
+          status: 'تحت المراجعة',
+          approvals: r.approvals?.map(a => a.role === r.workflow ? { ...a, status: 'موافق' } : a)
+        };
+      } else {
+        return {
+          ...r,
+          workflow: 'تمت الموافقة',
+          status: 'تمت الموافقة',
+          approvals: r.approvals?.map(a => ({ ...a, status: 'موافق' }))
+        };
+      }
     }));
   };
 
-  const rejectRequest = (id: string) => {
+  const rejectRequestAdmin = (id: string) => {
     setRequests(prev => prev.map(r =>
-      r.id === id ? { ...r, workflow: 'تم رفض الطلب', status: 'مرفوض' } : r
-    ));
-  };
-
-  const acceptRequest = (id: string) => {
-    setRequests(prev => prev.map(r =>
-      r.id === id ? { ...r, workflow: 'موافق عليه', status: 'مقبول' } : r
+      r.id === id ? { ...r, workflow: 'مرفوض', status: 'مرفوض' } : r
     ));
   };
 
@@ -394,13 +358,6 @@ export default function App() {
       { text: 'إلغاء', style: 'cancel' },
       { text: 'حذف', style: 'destructive', onPress: () => setter(prev => prev.filter((_, i) => i !== index)) }
     ]);
-  };
-
-  const setVehiclePermission = (vehicleId: string, key: keyof PermissionSet, value: boolean) => {
-    setPermissions(prev => ({
-      ...prev,
-      [vehicleId]: { ...(prev[vehicleId] || DEFAULT_PERMISSIONS), [key]: value }
-    }));
   };
 
   const exportExcel = async (rows: RequestItem[], filename: string) => {
@@ -445,10 +402,10 @@ export default function App() {
   const renderCoding = () => (
     <View>
       <Text style={styles.sectionTitle}>التكويدات</Text>
-      <Text style={styles.helper}>إضافة وتعديل وحذف التكويدات المستخدمة في الطلبات والورش والعملاء والمهندسين.</Text>
+      <Text style={styles.helper}>إضافة وتعديل وحذف التكويدات (تشمل مالك السيارة، أنواع المهام، الوجهات، وغيرها).</Text>
       {Object.keys(codingMap).map((key, i) => (
         <TouchableOpacity key={key} style={styles.menuCard} onPress={() => setCodingModal(key)}>
-          <View style={styles.menuIcon}><Text style={styles.menuIconText}>{['⛽','🛢️','🔋','🔧','🛞','🏪','🛠️','🏭','👥','👨‍🔧'][i]}</Text></View>
+          <View style={styles.menuIcon}><Text style={styles.menuIconText}>{['⛽','🛢️','🔋','🔧','🛞','🏪','🛠️','🏭','👥','👨‍🔧','🏢','🚗','📍'][i] || '📁'}</Text></View>
           <View style={{flex:1}}>
             <Text style={styles.menuTitle}>{key}</Text>
             <Text style={styles.menuSub}>{codingMap[key].length} عنصر</Text>
@@ -459,51 +416,110 @@ export default function App() {
     </View>
   );
 
-  const renderPricing = () => {
-    const pricingTabs = ['وقود', 'زيوت', 'قطع غيار', 'صيانة', 'بطاريات', 'إطارات'];
-    let currentItems: string[] = [];
-    if (adminPricingSubTab === 'وقود') currentItems = fuelTypes;
-    else if (adminPricingSubTab === 'زيوت') currentItems = oils;
-    else if (adminPricingSubTab === 'قطع غيار') currentItems = parts;
-    else if (adminPricingSubTab === 'صيانة') currentItems = maintenanceItems;
-    else if (adminPricingSubTab === 'بطاريات') currentItems = batteries;
-    else if (adminPricingSubTab === 'إطارات') currentItems = tires;
-
-    return (
-      <View>
-        <Text style={styles.sectionTitle}>نوافذ التسعير</Text>
-        <Text style={styles.helper}>إدارة أسعار الخدمات والقطع والمحروقات لكل قسم.</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 12}} contentContainerStyle={{flexDirection:'row-reverse', gap: 6}}>
-          {pricingTabs.map(tab => (
-            <TouchableOpacity key={tab} onPress={() => setAdminPricingSubTab(tab)}
-              style={[styles.choice, adminPricingSubTab === tab && styles.choiceActive]}>
-              <Text style={[styles.choiceText, adminPricingSubTab === tab && styles.choiceTextActive]}>{tab}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        {currentItems.map(item => (
-          <View key={item} style={styles.priceRow}>
-            <Text style={styles.cardText}>{item}</Text>
-            <TextInput
-              style={styles.priceInput}
-              keyboardType="numeric"
-              value={String(prices[item] || 0)}
-              onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))}
-            />
-          </View>
+  const renderAdminControl = () => (
+    <View>
+      <Text style={styles.sectionTitle}>لوحة التحكم المركزية</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 12}} contentContainerStyle={{flexDirection:'row-reverse', gap: 6}}>
+        {[
+          ['routes', 'إعدادات المسارات'],
+          ['managers', 'إعدادات المسؤول المباشر'],
+          ['passwords', 'إعدادات كلمات المرور'],
+          ['notifications', 'إرسال الإشعارات']
+        ].map(([key, label]) => (
+          <TouchableOpacity key={key} onPress={() => setAdminControlSubTab(key)}
+            style={[styles.choice, adminControlSubTab === key && styles.choiceActive]}>
+            <Text style={[styles.choiceText, adminControlSubTab === key && styles.choiceTextActive]}>{label}</Text>
+          </TouchableOpacity>
         ))}
-      </View>
-    );
-  };
+      </ScrollView>
+
+      {adminControlSubTab === 'routes' && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>إعدادات مسارات الطلبات</Text>
+          <Text style={styles.helper}>تحديد تسلسل الاعتمادات لكل نوع طلب (المسؤول المباشر، الخدمات الإدارية، إلخ).</Text>
+          {Object.keys(routeSettings).map(reqType => (
+            <View key={reqType} style={{marginVertical: 6}}>
+              <Text style={styles.label}>{reqType}:</Text>
+              <TextInput
+                style={styles.input}
+                value={routeSettings[reqType].join(' -> ')}
+                onChangeText={v => setRouteSettings(p => ({ ...p, [reqType]: v.split('->').map(s => s.trim()) }))}
+                textAlign="right"
+              />
+            </View>
+          ))}
+        </View>
+      )}
+
+      {adminControlSubTab === 'managers' && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>إعدادات المسؤول المباشر</Text>
+          <Text style={styles.helper}>تحديد السائقين الذين يعملون كمسؤولين مباشرين للاعتماد.</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="أدخل اسم المسؤول المباشر الجديد"
+            onSubmitEditing={e => {
+              if (e.nativeEvent.text.trim()) {
+                setDirectManagers(prev => [...prev, e.nativeEvent.text.trim()]);
+              }
+            }}
+            textAlign="right"
+          />
+          <View style={{marginTop: 8}}>
+            {directManagers.map((m, idx) => (
+              <View key={idx} style={styles.inlineRow}>
+                <Text style={{flex: 1, textAlign: 'right'}}>{m}</Text>
+                <TouchableOpacity onPress={() => setDirectManagers(prev => prev.filter((_, i) => i !== idx))}>
+                  <Text style={styles.deleteText}>حذف</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {adminControlSubTab === 'passwords' && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>إعدادات كلمات المرور للحسابات</Text>
+          <Text style={styles.helper}>تعديل كلمة المرور لأي سيارة أو حساب في الأسطول.</Text>
+          {fleet.map(v => (
+            <View key={v.id} style={styles.inlineRow}>
+              <Text style={{flex: 1, textAlign: 'right'}}>{v.id} - {v.driver}</Text>
+              <TouchableOpacity style={styles.smallPrimary} onPress={() => Alert.alert('تم التعديل', `تم إعادة تعيين كلمة مرور السيارة ${v.id} إلى 000`)}>
+                <Text style={styles.btnText}>إعادة تعيين 000</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {adminControlSubTab === 'notifications' && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>إرسال إشعارات فورية للسائقين</Text>
+          <Text style={styles.helper}>إرسال تنبيهات نصية أو صور أو ملفات لجميع السائقين أو سيارة محددة.</Text>
+          <TextInput style={styles.input} placeholder="عنوان الإشعار" value={adminNotifTitle} onChangeText={setAdminNotifTitle} textAlign="right" />
+          <TextInput style={[styles.input, {minHeight: 60}]} placeholder="نص الإشعار..." value={adminNotifBody} onChangeText={setAdminNotifBody} multiline textAlign="right" />
+          {renderSelect('الجهة المستهدفة', adminNotifTarget, ['الكل', ...fleet.map(v => v.id)], setAdminNotifTarget)}
+          <TouchableOpacity style={styles.primaryBtn} onPress={() => {
+            if (!adminNotifTitle.trim()) return;
+            setNotificationsList(prev => [{ id: `notif-${Date.now()}`, title: adminNotifTitle, body: adminNotifBody, date: TODAY(), target: adminNotifTarget }, ...prev]);
+            setAdminNotifTitle(''); setAdminNotifBody('');
+            Alert.alert('تم الإرسال', 'تم ارسال الإشعار الفوري بنجاح.');
+          }}>
+            <Text style={styles.btnText}>إرسال الإشعار الآن</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
 
   const renderRequestsAdmin = () => {
-    const reqSubTabs = ['وقود', 'زيوت', 'قطع غيار', 'صيانة', 'إطارات', 'بطاريات', 'إرسالية صيانة', 'إرسالية بنشر وخدمات'];
+    const reqSubTabs = ['وقود', 'زيوت', 'قطع غيار', 'صيانة', 'إطارات', 'بطاريات', 'طلب رحلة', 'إرسالية صيانة'];
     const rows = requests.filter(r => r.type === adminRequestSubTab);
 
     return (
       <View>
         <Text style={styles.sectionTitle}>إدارة الطلبات</Text>
-        <Text style={styles.helper}>عرض الطلبات مفصلة حسب النوع مع خيارات القبول والرفض.</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 12}} contentContainerStyle={{flexDirection:'row-reverse', gap: 6}}>
           {reqSubTabs.map(tab => (
             <TouchableOpacity key={tab} onPress={() => setAdminRequestSubTab(tab)}
@@ -524,21 +540,18 @@ export default function App() {
               </View>
               <Text style={styles.cardTitle}>{r.type} - السيارة: {r.vehicleId}</Text>
               <Text style={styles.cardText}>السائق: {r.driver}</Text>
-              <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
+              <Text style={styles.cardText}>التاريخ: {r.date} {r.qty ? `| الكمية: ${r.qty}` : ''}</Text>
               {r.total ? <Text style={styles.cardText}>القيمة: {money(r.total)}</Text> : null}
-              {r.station ? <Text style={styles.cardText}>المحطة: {r.station}</Text> : null}
-              {r.workshop ? <Text style={styles.cardText}>الورشة: {r.workshop}</Text> : null}
-              {r.engineer ? <Text style={styles.cardText}>المهندس: {r.engineer}</Text> : null}
-              {r.client ? <Text style={styles.cardText}>العميل: {r.client}</Text> : null}
-              {r.serviceDescription ? <Text style={styles.cardText}>وصف الخدمة: {r.serviceDescription}</Text> : null}
+              {r.destination ? <Text style={styles.cardText}>الوجهة: {r.destination} | نوع المهمة: {r.taskType}</Text> : null}
               {r.notes ? <Text style={styles.cardText}>ملاحظات: {r.notes}</Text> : null}
               {r.imageUri ? <Image source={{ uri: r.imageUri }} style={styles.previewImage} /> : null}
-              <Text style={styles.workflowTitle}>الحالة والمرحلة: {r.workflow || 'تحت المراجعة'}</Text>
+              <Text style={styles.workflowTitle}>المرحلة الحالية: {r.workflow || 'تحت المراجعة'}</Text>
+              
               <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.success }]} onPress={() => acceptRequest(r.id)}>
-                  <Text style={styles.btnText}>قبول</Text>
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.success }]} onPress={() => acceptRequestAdmin(r.id)}>
+                  <Text style={styles.btnText}>قبول واعتماد</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.danger }]} onPress={() => rejectRequest(r.id)}>
+                <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.danger }]} onPress={() => rejectRequestAdmin(r.id)}>
                   <Text style={styles.btnText}>رفض</Text>
                 </TouchableOpacity>
               </View>
@@ -550,13 +563,13 @@ export default function App() {
   };
 
   const renderFleet = () => {
-    const categories = ['السيارات المفعلة', 'السيارات الموقف', 'السيارات الخاصة', 'سيارات الشركة', 'جميع السيارات'];
+    const categories = ['جميع السيارات', 'سيارات الشركة', 'السيارات الخاصة', 'السيارات المفعلة', 'السيارات الموقف'];
     const filtered = fleet.filter(v => {
-      const ownership = v.ownership || 'شركة';
+      const own = v.ownership || 'سيارات الشركة';
+      if (fleetCategory === 'سيارات الشركة') return own === 'سيارات الشركة';
+      if (fleetCategory === 'السيارات الخاصة') return own === 'السيارات الخاصة';
       if (fleetCategory === 'السيارات المفعلة') return v.status !== 'موقف';
       if (fleetCategory === 'السيارات الموقف') return v.status === 'موقف';
-      if (fleetCategory === 'السيارات الخاصة') return ownership === 'خاصة';
-      if (fleetCategory === 'سيارات الشركة') return ownership === 'شركة';
       return true;
     });
 
@@ -564,35 +577,29 @@ export default function App() {
       setVehicleEditId(null);
       setVehicleForm({
         id: '', name: '', driver: '', status: 'في الخدمة', type: '', model: '',
-        payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'شركة'
+        payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'سيارات الشركة'
       });
       setVehicleModalVisible(true);
     };
 
     const openEditVehicle = (v: Vehicle) => {
       setVehicleEditId(v.id);
-      setVehicleForm({ ...v, ownership: v.ownership || 'شركة' });
+      setVehicleForm({ ...v, ownership: v.ownership || 'سيارات الشركة' });
       setVehicleModalVisible(true);
     };
 
     const saveVehicle = () => {
-      if (!vehicleForm.id.trim() || !vehicleForm.name.trim() || !vehicleForm.type.trim()) {
-        Alert.alert('تنبيه', 'رقم السيارة واسم السيارة والنوع حقول مطلوبة.');
-        return;
-      }
-      if (!vehicleEditId && fleet.some(v => v.id === vehicleForm.id.trim())) {
-        Alert.alert('تنبيه', 'رقم السيارة موجود مسبقًا.');
+      if (!vehicleForm.id.trim() || !vehicleForm.name.trim()) {
+        Alert.alert('تنبيه', 'رقم السيارة واسم السيارة حقول مطلوبة.');
         return;
       }
       const value = { ...vehicleForm, id: vehicleForm.id.trim(), name: vehicleForm.name.trim() };
       if (vehicleEditId) {
         setFleet(prev => prev.map(v => v.id === vehicleEditId ? value : v));
-        if (currentUser?.role === 'driver' && currentUser.id === vehicleEditId) setCurrentUser({ role: 'driver', ...value });
       } else {
         setFleet(prev => [...prev, value]);
       }
       setVehicleModalVisible(false);
-      Alert.alert('تم الحفظ', vehicleEditId ? 'تم تعديل بيانات السيارة.' : 'تمت إضافة السيارة.');
     };
 
     return (
@@ -616,15 +623,15 @@ export default function App() {
             </View>
             <Text style={styles.cardTitle}>{v.name}</Text>
             <Text style={styles.cardText}>السائق: {v.driver}</Text>
+            <Text style={styles.cardText}>المالك: {v.ownership || 'سيارات الشركة'}</Text>
             <Text style={styles.cardText}>الموديل: {v.model} | السعة: {v.payload}</Text>
-            <Text style={styles.cardText}>فئة النقل: {v.type} | الملكية: {v.ownership || 'شركة'}</Text>
             <View style={styles.actionRow}>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#64748B' }]} onPress={() => openEditVehicle(v)}>
-                <Text style={styles.btnText}>تعديل سيارة</Text>
+                <Text style={styles.btnText}>تعديل</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: v.status === 'موقف' ? COLORS.success : COLORS.danger }]}
                 onPress={() => setFleet(prev => prev.map(x => x.id === v.id ? { ...x, status: x.status === 'موقف' ? 'في الخدمة' : 'موقف' } : x))}>
-                <Text style={styles.btnText}>{v.status === 'موقف' ? 'تفعيل السيارة' : 'إيقاف السيارة'}</Text>
+                <Text style={styles.btnText}>{v.status === 'موقف' ? 'تفعيل' : 'إيقاف'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -637,20 +644,19 @@ export default function App() {
                 <Text style={styles.modalTitle}>{vehicleEditId ? 'تعديل سيارة' : 'إضافة سيارة'}</Text>
                 {[
                   ['id','رقم السيارة'], ['name','اسم السيارة'], ['driver','السائق'], ['type','فئة النقل'],
-                  ['model','الموديل'], ['payload','الحمولة / السعة'], ['fuelType','نوع الوقود'],
-                  ['engineNo','رقم المحرك'], ['chassisNo','رقم الشاسيه']
+                  ['model','الموديل'], ['payload','الحمولة / السعة']
                 ].map(([key,label]) => (
                   <View key={key}>
                     <Text style={styles.label}>{label}</Text>
                     <TextInput style={styles.input}
                       value={String((vehicleForm as any)[key] || '')}
-                      onChangeText={v => setVehicleForm(p => ({ ...p, [key]: v }))}
+                      onChangeText={val => setVehicleForm(p => ({ ...p, [key]: val }))}
                       textAlign="right"
                     />
                   </View>
                 ))}
-                {renderSelect('الحالة', vehicleForm.status, ['في الخدمة','موقف'], v => setVehicleForm(p => ({ ...p, status: v })))}
-                {renderSelect('الملكية', vehicleForm.ownership || 'شركة', ['شركة','خاصة'], v => setVehicleForm(p => ({ ...p, ownership: v as 'شركة' | 'خاصة' })))}
+                {renderSelect('مالك السيارة', vehicleForm.ownership || 'سيارات الشركة', carOwners, val => setVehicleForm(p => ({ ...p, ownership: val })))}
+                {renderSelect('الحالة', vehicleForm.status, ['في الخدمة','موقف'], val => setVehicleForm(p => ({ ...p, status: val })))}
                 <TouchableOpacity style={styles.primaryBtn} onPress={saveVehicle}><Text style={styles.btnText}>حفظ السيارة</Text></TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryBtn} onPress={() => setVehicleModalVisible(false)}><Text style={styles.btnText}>إلغاء</Text></TouchableOpacity>
               </View>
@@ -664,47 +670,53 @@ export default function App() {
   const renderAssignments = () => (
     <View>
       <Text style={styles.sectionTitle}>ربط السائقين بالسيارات</Text>
-      <Text style={styles.helper}>أدخل رقم السيارة، وسيتم عرض بياناتها تلقائيًا. ثم أدخل رقم السائق واختر الاسم من القائمة.</Text>
-      <Text style={styles.label}>1. رقم السيارة</Text>
-      <TextInput
-        style={styles.input}
-        keyboardType="numeric"
-        value={assignmentForm.vehicleId}
-        onChangeText={v => setAssignmentForm(p => ({ ...p, vehicleId: v }))}
-        placeholder="أدخل رقم السيارة"
-        textAlign="right"
-      />
-      {assignmentVehicle && (
-        <View style={styles.vehicleInfoBox}>
-          <Text style={styles.cardTitle}>بيانات السيارة</Text>
-          <Text style={styles.cardText}>الاسم: {assignmentVehicle.name}</Text>
-          <Text style={styles.cardText}>الموديل: {assignmentVehicle.model}</Text>
-          <Text style={styles.cardText}>السعة: {assignmentVehicle.payload}</Text>
-          <Text style={styles.cardText}>فئة النقل: {assignmentVehicle.type}</Text>
+      <Text style={styles.helper}>انقر داخل حقل رقم السيارة لتظهر لك قائمة السيارات المتاحة فوراً.</Text>
+      
+      <Text style={styles.label}>رقم السيارة</Text>
+      <TouchableOpacity style={styles.dropdownInput} onPress={() => setVehicleDropdownVisible(true)}>
+        <Text style={{ textAlign: 'right', color: assignmentForm.vehicleId ? COLORS.text : COLORS.muted }}>
+          {assignmentForm.vehicleId ? `سيارة رقم: ${assignmentForm.vehicleId}` : 'انقر لاختيار رقم السيارة من القائمة'}
+        </Text>
+      </TouchableOpacity>
+
+      {vehicleDropdownVisible && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>اختر السيارة:</Text>
+          {fleet.map(v => (
+            <TouchableOpacity key={v.id} style={{paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEF2F7'}}
+              onPress={() => { setAssignmentForm(p => ({ ...p, vehicleId: v.id, driver: v.driver })); setVehicleDropdownVisible(false); }}>
+              <Text style={{textAlign: 'right', fontWeight: 'bold'}}>{v.id} - {v.name}</Text>
+            </TouchableOpacity>
+          ))}
+          <TouchableOpacity style={[styles.secondaryBtn, {marginTop: 8}]} onPress={() => setVehicleDropdownVisible(false)}>
+            <Text style={styles.btnText}>إغلاق القائمة</Text>
+          </TouchableOpacity>
         </View>
       )}
-      <Text style={styles.label}>2. رقم السائق</Text>
+
+      {assignmentVehicle && (
+        <View style={styles.vehicleInfoBox}>
+          <Text style={styles.cardTitle}>بيانات السيارة المختارة</Text>
+          <Text style={styles.cardText}>الاسم: {assignmentVehicle.name}</Text>
+          <Text style={styles.cardText}>السائق الحالي: {assignmentVehicle.driver}</Text>
+        </View>
+      )}
+
+      <Text style={styles.label}>رقم السائق</Text>
       <TextInput style={styles.input} value={assignmentForm.driverId}
         onChangeText={v => setAssignmentForm(p => ({ ...p, driverId: v }))}
         placeholder="أدخل رقم السائق" textAlign="right" />
       <Text style={styles.label}>اسم السائق</Text>
-      <TouchableOpacity style={styles.dropdownInput} onPress={() => setDriverDropdownVisible(true)}>
-        <Text style={{ textAlign: 'right', color: assignmentForm.driver ? COLORS.text : COLORS.muted }}>
-          {assignmentForm.driver || 'اختر السائق من القائمة'}
-        </Text>
-      </TouchableOpacity>
-      <Text style={styles.label}>3. تاريخ بداية التكليف</Text>
-      <TextInput style={styles.input} value={assignmentForm.startDate}
-        onChangeText={v => setAssignmentForm(p => ({ ...p, startDate: v }))}
-        placeholder="YYYY-MM-DD" textAlign="right" />
+      <TextInput style={styles.input} value={assignmentForm.driver}
+        onChangeText={v => setAssignmentForm(p => ({ ...p, driver: v }))}
+        placeholder="اسم السائق المرتبط" textAlign="right" />
+
       <TouchableOpacity style={styles.primaryBtn} onPress={() => {
-        if (!assignmentVehicle) { Alert.alert('تنبيه', 'السيارة غير موجودة.'); return; }
-        if (!assignmentForm.driverId.trim() || !assignmentForm.driver) { Alert.alert('تنبيه', 'أدخل رقم السائق واختر اسم السائق.'); return; }
+        if (!assignmentForm.vehicleId) { Alert.alert('تنبيه', 'يرجى اختيار رقم السيارة.'); return; }
         setAssignments(prev => [...prev, { ...assignmentForm, id: `ASG-${Date.now()}` }]);
-        setAssignmentForm({ id:'', driver:'', driverId:'', vehicleId:'', startDate:TODAY(), endDate:'', notes:'' });
-        Alert.alert('تم الحفظ', 'تم ربط السائق بالسيارة.');
+        Alert.alert('تم الحفظ', 'تم ربط السائق بالسيارة بنجاح.');
       }}>
-        <Text style={styles.btnText}>5. حفظ التكليف</Text>
+        <Text style={styles.btnText}>حفظ التكليف</Text>
       </TouchableOpacity>
     </View>
   );
@@ -713,21 +725,19 @@ export default function App() {
     const permissionLabels: Array<[keyof PermissionSet, string]> = [
       ['addVehicle','إضافة سيارة'], ['editVehicle','تعديل بيانات سيارة'],
       ['assignVehicle','ربط السائقين بالسيارات'], ['addDriver','إضافة سائق'],
-      ['editDriver','تعديل بيانات سائق'], ['editCodings','إضافة وتعديل التكويدات'],
-      ['editPrices','إضافة وتعديل الأسعار'], ['changePassword','تغيير كلمة المرور'],
       ['reports','التقارير'], ['requestService','طلبات الخدمات'],
     ];
     return (
       <View>
         <Text style={styles.sectionTitle}>الصلاحيات</Text>
         {fleet.map(v => {
-          const p = getPermission(v.id);
+          const p = permissions[v.id] || DEFAULT_PERMISSIONS;
           return (
             <View key={v.id} style={styles.card}>
               <Text style={styles.cardTitle}>{v.id} - {v.driver}</Text>
               {permissionLabels.map(([key,label]) => (
                 <View key={String(key)} style={styles.switchRow}>
-                  <Switch value={!!p[key]} onValueChange={value => setVehiclePermission(v.id,key,value)} />
+                  <Switch value={!!p[key]} onValueChange={value => setPermissions(prev => ({ ...prev, [v.id]: { ...p, [key]: value } }))} />
                   <Text style={styles.switchLabel}>{label}</Text>
                 </View>
               ))}
@@ -738,26 +748,16 @@ export default function App() {
     );
   };
 
-  const renderReports = (isAdmin = false) => {
-    let rows = isAdmin ? requests : requests.filter(r => r.vehicleId === currentUser?.id);
-    if (reportType !== 'الكل') rows = rows.filter(r => r.type === reportType);
-    if (reportFrom) rows = rows.filter(r => r.date >= reportFrom);
-    if (reportTo) rows = rows.filter(r => r.date <= reportTo);
-    const total = rows.reduce((s,r) => s + Number(r.total || 0), 0);
+  const renderReportsAdmin = () => {
+    const rows = requests;
+    const total = rows.reduce((s, r) => s + Number(r.total || 0), 0);
     return (
       <View>
-        <Text style={styles.sectionTitle}>{isAdmin ? 'التقارير' : 'تقارير الطلبات'}</Text>
-        <View style={styles.filterBox}>
-          {renderSelect('نوع الطلب', reportType, ['الكل', ...requestTypes], setReportType)}
-          <Text style={styles.label}>من تاريخ</Text>
-          <TextInput style={styles.input} value={reportFrom} onChangeText={setReportFrom} placeholder="YYYY-MM-DD" textAlign="right" />
-          <Text style={styles.label}>إلى تاريخ</Text>
-          <TextInput style={styles.input} value={reportTo} onChangeText={setReportTo} placeholder="YYYY-MM-DD" textAlign="right" />
-        </View>
+        <Text style={styles.sectionTitle}>تقارير الأسطول الشاملة</Text>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>إجمالي المصاريف والطلبات</Text>
+          <Text style={styles.summaryTitle}>إجمالي المصاريف العامة</Text>
           <Text style={styles.summaryValue}>{money(total)}</Text>
-          <Text style={styles.summarySub}>{rows.length} عملية</Text>
+          <Text style={styles.summarySub}>{rows.length} عملية مسجلة</Text>
         </View>
         {rows.map(r => (
           <View key={r.id} style={styles.card}>
@@ -765,17 +765,16 @@ export default function App() {
               <Text style={styles.cardId}>{r.id}</Text>
               <Text style={styles.badge}>{r.status}</Text>
             </View>
-            <Text style={styles.cardTitle}>{r.type}</Text>
-            <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
-            <Text style={styles.cardText}>التكلفة: {money(r.total)}</Text>
-            <Text style={styles.workflowTitle}>المرحلة: {r.workflow || 'تحت المراجعة'}</Text>
+            <Text style={styles.cardTitle}>{r.type} - سيارة {r.vehicleId}</Text>
+            <Text style={styles.cardText}>التاريخ: {r.date} | التكلفة: {money(r.total)}</Text>
+            <Text style={styles.workflowTitle}>المرحلة: {r.workflow}</Text>
           </View>
         ))}
         <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.success }]} onPress={() => exportExcel(rows, isAdmin ? 'admin-report' : 'my-report')}>
+          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.success }]} onPress={() => exportExcel(rows, 'admin-report')}>
             <Text style={styles.btnText}>تصدير Excel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.primary }]} onPress={() => exportPdf(rows, isAdmin ? 'التقرير العام' : 'تقرير مصاريف السيارة')}>
+          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.primary }]} onPress={() => exportPdf(rows, 'التقرير العام للأسطول')}>
             <Text style={styles.btnText}>تصدير PDF</Text>
           </TouchableOpacity>
         </View>
@@ -787,97 +786,120 @@ export default function App() {
     if (!serviceTypeModal) return null;
     const price = currentUnitPrice();
     const qty = Number(reqQty) || 0;
-    const prev = lastOdometer(currentUser?.id || '');
+    const userReqs = requests.filter(r => r.vehicleId === currentUser?.id && r.type === serviceTypeModal);
+    const filteredUserReqs = userReqs.filter(r => userReportFilterStatus === 'كل الحالات' || r.status === userReportFilterStatus);
 
     return (
       <Modal visible animationType="slide" transparent onRequestClose={() => setServiceTypeModal(null)}>
         <View style={styles.modalOverlay}>
           <SafeAreaView style={{flex: 1, justifyContent: 'center', width: '100%'}}>
             <ScrollView contentContainerStyle={styles.modalCenter} keyboardShouldPersistTaps="handled">
-              <View style={[styles.modalContent, {maxHeight: '85%'}]}>
-                <Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text>
+              <View style={[styles.modalContent, {maxHeight: '90%'}]}>
                 
-                <View style={styles.infoPill}>
-                  <Text style={styles.infoPillText}>العملية: {getNextRequestId()}</Text>
-                  <Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text>
+                {/* تبويبات شبيهة بطلب إجازة */}
+                <View style={styles.modalTabHeader}>
+                  <TouchableOpacity onPress={() => setRequestModalTab('report')}
+                    style={[styles.modalTabBtn, requestModalTab === 'report' && styles.modalTabBtnActive]}>
+                    <Text style={[styles.modalTabText, requestModalTab === 'report' && styles.modalTabTextActive]}>تقرير {serviceTypeModal}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setRequestModalTab('create')}
+                    style={[styles.modalTabBtn, requestModalTab === 'create' && styles.modalTabBtnActive]}>
+                    <Text style={[styles.modalTabText, requestModalTab === 'create' && styles.modalTabTextActive]}>طلب {serviceTypeModal}</Text>
+                  </TouchableOpacity>
                 </View>
 
-                {serviceTypeModal === 'وقود' && <>
-                  {renderSelect('المحطة', selectedStation, stations, setSelectedStation)}
-                  {renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}
-                </>}
+                {requestModalTab === 'create' ? (
+                  <View style={{paddingVertical: 6}}>
+                    <View style={styles.infoPill}>
+                      <Text style={styles.infoPillText}>العملية: تلقائية</Text>
+                      <Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text>
+                    </View>
 
-                {serviceTypeModal === 'زيوت' && <>
-                  {renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}
-                  {renderSelect('الوحدة', selectedUnit, ['دبة','علبة','جالون'], setSelectedUnit)}
-                  <Text style={styles.label}>العداد السابق</Text>
-                  <TextInput style={styles.input} value={String(prev)} editable={false} textAlign="right" />
-                  <Text style={styles.label}>العداد الحالي</Text>
-                  <TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" />
-                  <Text style={styles.calcText}>المسافة المقطوعة: {Math.max(0,(Number(currOdometer)||prev)-prev).toLocaleString()} كم</Text>
-                </>}
+                    {serviceTypeModal === 'وقود' && <>
+                      {renderSelect('المحطة', selectedStation, stations, setSelectedStation)}
+                      {renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}
+                    </>}
 
-                {serviceTypeModal === 'بطاريات' && renderSelect('نوع البطارية', selectedBattery, batteries, setSelectedBattery)}
-                {serviceTypeModal === 'قطع غيار' && renderSelect('قطعة الغيار', selectedPart, parts, setSelectedPart)}
-                {serviceTypeModal === 'إطارات' && renderSelect('نوع الإطار', selectedTire, tires, setSelectedTire)}
+                    {serviceTypeModal === 'زيوت' && <>
+                      {renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}
+                      {renderSelect('الوحدة', selectedUnit, ['دبة','علبة','جالون'], setSelectedUnit)}
+                    </>}
 
-                {serviceTypeModal === 'صيانة' && <>
-                  {renderSelect('نوع الصيانة', selectedMaintenance, maintenanceItems, setSelectedMaintenance)}
-                  {renderSelect('الورشة', selectedWorkshop, workshops, setSelectedWorkshop)}
-                  {renderSelect('المهندس', selectedEngineer, engineers, setSelectedEngineer)}
-                  <Text style={styles.label}>نوع العطل</Text>
-                  <TextInput style={styles.input} value={faultType} onChangeText={setFaultType} textAlign="right" />
-                  <Text style={styles.label}>العمل المطلوب</Text>
-                  <TextInput style={[styles.input,{minHeight:50}]} value={requiredWork} onChangeText={setRequiredWork} multiline textAlign="right" />
-                </>}
+                    {serviceTypeModal === 'طلب رحلة' && <>
+                      {renderSelect('نوع المهمة', tripTaskType, tripTaskTypes, setTripTaskType)}
+                      {renderSelect('الوجهة / المنطقة', tripDestination, destinations, setTripDestination)}
+                      <Text style={styles.label}>تاريخ الإنطلاق</Text>
+                      <TextInput style={styles.input} value={tripStartDate} onChangeText={setTripStartDate} textAlign="right" />
+                      <Text style={styles.label}>مدة الرحلة</Text>
+                      <TextInput style={styles.input} value={tripDuration} onChangeText={setTripDuration} textAlign="right" />
+                      <Text style={styles.label}>تاريخ العودة</Text>
+                      <TextInput style={styles.input} value={tripReturnDate} onChangeText={setTripReturnDate} textAlign="right" />
+                      <Text style={styles.label}>العهدة المالية</Text>
+                      <TextInput style={styles.input} keyboardType="numeric" value={tripCustody} onChangeText={setTripCustody} placeholder="المبلغ المطلوب عهدة" textAlign="right" />
+                    </>}
 
-                {serviceTypeModal === 'إرسالية صيانة' && <>
-                  <Text style={styles.label}>رقم السيارة</Text>
-                  <TextInput style={styles.input} value={currentUser?.id} editable={false} textAlign="right" />
-                  <Text style={styles.label}>السائق</Text>
-                  <TextInput style={styles.input} value={currentUser?.driver} editable={false} textAlign="right" />
-                  {renderSelect('الورشة', serviceUserWorkshop, workshops, setServiceUserWorkshop)}
-                  {renderSelect('المهندس', serviceUserEngineer, engineers, setServiceUserEngineer)}
-                  <Text style={styles.label}>نوع العطل</Text>
-                  <TextInput style={styles.input} value={faultType} onChangeText={setFaultType} textAlign="right" />
-                  <Text style={styles.label}>العمل المطلوب</Text>
-                  <TextInput style={[styles.input,{minHeight:50}]} value={requiredWork} onChangeText={setRequiredWork} multiline textAlign="right" />
-                </>}
+                    {serviceTypeModal !== 'طلب رحلة' && (
+                      <>
+                        <Text style={styles.label}>الكمية</Text>
+                        <TextInput style={styles.input} keyboardType="numeric" value={reqQty} onChangeText={setReqQty} placeholder="أدخل الكمية" textAlign="right" />
+                        {price > 0 && <Text style={styles.totalText}>الإجمالي التقديري: {money(qty * price)}</Text>}
+                      </>
+                    )}
 
-                {serviceTypeModal === 'إرسالية بنشر وخدمات' && <>
-                  <Text style={styles.label}>رقم العملية (تلقائي)</Text>
-                  <TextInput style={styles.input} value={getNextRequestId()} editable={false} textAlign="right" />
-                  <Text style={styles.label}>التاريخ (تلقائي)</Text>
-                  <TextInput style={styles.input} value={TODAY()} editable={false} textAlign="right" />
-                  <Text style={styles.label}>رقم السيارة (تلقائي)</Text>
-                  <TextInput style={styles.input} value={currentUser?.id} editable={false} textAlign="right" />
-                  {renderSelect('العميل', serviceUserClient, clients, setServiceUserClient)}
-                  <Text style={styles.label}>الخدمة / يكتبها المستخدم</Text>
-                  <TextInput style={styles.input} value={serviceDescription} onChangeText={setServiceDescription} placeholder="اكتب الخدمة المطلوبة" textAlign="right" />
-                </>}
+                    <Text style={styles.label}>الملاحظات والأسباب</Text>
+                    <TextInput style={[styles.input,{minHeight:50}]} value={reqNotes} onChangeText={setReqNotes} multiline textAlign="right" />
 
-                {serviceTypeModal !== 'إرسالية صيانة' && serviceTypeModal !== 'إرسالية بنشر وخدمات' && (
-                  <>
-                    <Text style={styles.label}>الكمية</Text>
-                    <TextInput style={styles.input} keyboardType="numeric" value={reqQty} onChangeText={setReqQty} placeholder="أدخل الكمية" textAlign="right" />
-                    {price > 0 && <Text style={styles.totalText}>الإجمالي التقديري: {money(qty * price)}</Text>}
-                  </>
+                    <View style={styles.attachmentBox}>
+                      <Text style={styles.label}>المرفقات</Text>
+                      <Text style={styles.helper}>يمكنك إرفاق الصور والمستندات المتعلقة بالطلب</Text>
+                      <TouchableOpacity style={styles.uploadBtn} onPress={openImagePicker}>
+                        <Text style={styles.uploadBtnText}>＋ إرفاق صورة</Text>
+                      </TouchableOpacity>
+                      {reqImage ? <Image source={{ uri: reqImage }} style={styles.previewImage} /> : null}
+                    </View>
+
+                    <View style={[styles.actionRow, {marginTop: 15}]}>
+                      <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.primary}]} onPress={submitRequest}>
+                        <Text style={styles.btnText}>إرسال الطلب</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#64748B'}]} onPress={() => { setServiceTypeModal(null); resetRequestForm(); }}>
+                        <Text style={styles.btnText}>إلغاء</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{paddingVertical: 6}}>
+                    {renderSelect('فلترة بالحالة', userReportFilterStatus, ['كل الحالات', 'تحت المراجعة', 'تمت الموافقة', 'مرفوض'], setUserReportFilterStatus)}
+                    
+                    {filteredUserReqs.length === 0 ? (
+                      <Text style={[styles.helper, {textAlign: 'center', marginTop: 20}]}>لا توجد طلبات مسجلة مطابقة.</Text>
+                    ) : (
+                      filteredUserReqs.map(r => (
+                        <View key={r.id} style={styles.card}>
+                          <View style={styles.cardHeader}>
+                            <Text style={styles.cardId}>{r.id}</Text>
+                            <Text style={styles.badge}>{r.status}</Text>
+                          </View>
+                          <Text style={styles.cardTitle}>{r.type} - {r.date}</Text>
+                          {r.total ? <Text style={styles.cardText}>التكلفة: {money(r.total)}</Text> : null}
+                          <Text style={styles.workflowTitle}>مسار الطلب والموافقات:</Text>
+                          {r.approvals?.map((app, idx) => (
+                            <View key={idx} style={{flexDirection: 'row-reverse', justifyContent: 'space-between', paddingVertical: 3}}>
+                              <Text style={styles.cardText}>- {app.role}</Text>
+                              <Text style={{color: app.status === 'موافق' ? COLORS.success : COLORS.muted, fontWeight: 'bold'}}>{app.status}</Text>
+                            </View>
+                          ))}
+                          {r.imageUri ? <Image source={{ uri: r.imageUri }} style={styles.previewImage} /> : null}
+                        </View>
+                      ))
+                    )}
+
+                    <TouchableOpacity style={[styles.secondaryBtn, {marginTop: 15}]} onPress={() => setServiceTypeModal(null)}>
+                      <Text style={styles.btnText}>إغلاق التقرير</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
 
-                <Text style={styles.label}>الملاحظات</Text>
-                <TextInput style={[styles.input,{minHeight:50}]} value={reqNotes} onChangeText={setReqNotes} multiline textAlign="right" />
-
-                <TouchableOpacity style={styles.secondaryBtn} onPress={openImagePicker}><Text style={styles.btnText}>📷 إرفاق صورة</Text></TouchableOpacity>
-                {reqImage ? <Image source={{ uri: reqImage }} style={styles.previewImage} /> : null}
-
-                <View style={[styles.actionRow, {marginTop: 15, marginBottom: 20}]}>
-                  <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.primary}]} onPress={submitRequest}>
-                    <Text style={styles.btnText}>إرسال الطلب</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#64748B'}]} onPress={() => { setServiceTypeModal(null); resetRequestForm(); }}>
-                    <Text style={styles.btnText}>إلغاء</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </ScrollView>
           </SafeAreaView>
@@ -891,7 +913,7 @@ export default function App() {
       <SafeAreaView style={styles.loginContainer}>
         <StatusBar barStyle="dark-content" />
         <View style={styles.loginCard}>
-          <Text style={styles.loginSubtitle}>تسجيل الدخول</Text>
+          <Text style={styles.loginSubtitle}>تسجيل الدخول - نظام الأسطول</Text>
           <TextInput style={styles.input} placeholder="اسم المستخدم / رقم السيارة" placeholderTextColor="#94A3B8"
             value={username} onChangeText={setUsername} textAlign="right" />
           <TextInput style={styles.input} placeholder="كلمة المرور" placeholderTextColor="#94A3B8"
@@ -904,16 +926,16 @@ export default function App() {
 
   if (currentUser.role === 'admin') {
     const adminNav = [
-      ['requests','📋','الطلبات'], ['coding','🧩','التكويدات'], ['pricing','💰','الأسعار'],
-      ['fleet','🚗','قائمة السيارات'], ['assignments','🔗','ربط السائقين'],
-      ['permissions','🔐','الصلاحيات'], ['reports','📊','التقارير'],
+      ['requests','📋','الطلبات'], ['control','⚙️','لوحة التحكم'], ['coding','🧩','التكويدات'],
+      ['pricing','💰','الأسعار'], ['fleet','🚗','السيارات'], ['assignments','🔗','ربط السائقين'],
+      ['permissions','🔐','الصلاحيات'], ['reports','📊','التقارير']
     ];
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, darkMode && {backgroundColor: '#1E293B'}]}>
         <StatusBar barStyle="light-content" />
         <View style={styles.topHeader}>
           <View>
-            <Text style={styles.headerTitle}>لوحة المسؤول</Text>
+            <Text style={styles.headerTitle}>لوحة المسؤول الشاملة</Text>
             <Text style={styles.headerSub}>مرحبًا، {currentUser.name}</Text>
           </View>
           <View style={styles.headerAvatar}><Text style={styles.headerAvatarText}>م</Text></View>
@@ -929,12 +951,29 @@ export default function App() {
         </ScrollView>
         <ScrollView style={styles.content} contentContainerStyle={{paddingBottom:30}}>
           {adminTab === 'requests' ? renderRequestsAdmin() : null}
+          {adminTab === 'control' ? renderAdminControl() : null}
           {adminTab === 'coding' ? renderCoding() : null}
-          {adminTab === 'pricing' ? renderPricing() : null}
+          {adminTab === 'pricing' ? (
+            <View>
+              <Text style={styles.sectionTitle}>نوافذ التسعير</Text>
+              {['وقود', 'زيوت', 'قطع غيار', 'بطاريات', 'إطارات'].map(tab => (
+                <View key={tab} style={styles.card}>
+                  <Text style={styles.cardTitle}>{tab}</Text>
+                  {fuelTypes.map(item => (
+                    <View key={item} style={styles.priceRow}>
+                      <Text style={styles.cardText}>{item}</Text>
+                      <TextInput style={styles.priceInput} keyboardType="numeric" value={String(prices[item] || 0)}
+                        onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/\D/g, '')) || 0 }))} />
+                    </View>
+                  ))}
+                </View>
+              ))}
+            </View>
+          ) : null}
           {adminTab === 'fleet' ? renderFleet() : null}
           {adminTab === 'assignments' ? renderAssignments() : null}
           {adminTab === 'permissions' ? renderPermissions() : null}
-          {adminTab === 'reports' ? renderReports(true) : null}
+          {adminTab === 'reports' ? renderReportsAdmin() : null}
         </ScrollView>
         <TouchableOpacity style={styles.logoutBar} onPress={handleLogout}><Text style={styles.btnText}>تسجيل الخروج</Text></TouchableOpacity>
 
@@ -944,22 +983,19 @@ export default function App() {
               <Text style={styles.modalTitle}>تكويد {codingModal}</Text>
               <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder="اسم العنصر الجديد" textAlign="right" />
               <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}>
-                <Text style={styles.btnText}>{itemEditor.index >= 0 ? 'حفظ التعديل' : 'إضافة عنصر'}</Text>
+                <Text style={styles.btnText}>إضافة العنصر</Text>
               </TouchableOpacity>
-              <ScrollView style={{maxHeight:320, marginTop: 10}}>
-                {codingModal ? codingMap[codingModal].map((item,index) => (
-                  <View key={`${item}-${index}`} style={styles.inlineRow}>
-                    <Text style={{flex:1,textAlign:'right'}}>{item}</Text>
-                    <TouchableOpacity onPress={() => { setNewItem(item); setItemEditor({index,value:item}); }}>
-                      <Text style={styles.editText}>تعديل</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteCodingItem(codingModal,index)}>
+              <ScrollView style={{maxHeight:250, marginTop: 10}}>
+                {codingModal ? codingMap[codingModal].map((item, index) => (
+                  <View key={index} style={styles.inlineRow}>
+                    <Text style={{flex:1, textAlign:'right'}}>{item}</Text>
+                    <TouchableOpacity onPress={() => deleteCodingItem(codingModal, index)}>
                       <Text style={styles.deleteText}>حذف</Text>
                     </TouchableOpacity>
                   </View>
                 )) : null}
               </ScrollView>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setItemEditor({index:-1,value:''}); setNewItem(''); }}>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setNewItem(''); }}>
                 <Text style={styles.btnText}>إغلاق</Text>
               </TouchableOpacity>
             </View>
@@ -969,8 +1005,11 @@ export default function App() {
     );
   }
 
+  // حساب السائق / المستخدم
+  const serviceTypes = ['وقود', 'زيوت', 'طلب رحلة', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات', 'إرسالية صيانة', 'إرسالية بنشر وخدمات'];
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, darkMode && {backgroundColor: '#1E293B'}]}>
       <StatusBar barStyle="light-content" />
       <View style={styles.topHeader}>
         <View>
@@ -979,62 +1018,106 @@ export default function App() {
         </View>
         <View style={styles.headerAvatar}><Text style={{fontSize:22}}>🚗</Text></View>
       </View>
-      <ScrollView style={styles.content} contentContainerStyle={{paddingBottom:30}}>
-        {userTab === 'service' && (
+
+      <ScrollView style={styles.content} contentContainerStyle={{paddingBottom:40}}>
+        {userTab === 'main' && (
           <View>
             <Text style={styles.sectionTitle}>الخدمات والطلبات</Text>
-            {requestTypes.map((type,index) => (
+            {serviceTypes.map((type, index) => (
               <TouchableOpacity key={type} style={styles.serviceCard} onPress={() => { resetRequestForm(); setServiceTypeModal(type); }}>
-                <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛠️','🛞','📦','🧰'][index]}</Text></View>
+                <View style={styles.serviceIcon}><Text style={{fontSize:22}}>{['⛽','🛢️','✈️','🔋','🔧','🛠️','🛞','📦','🧰'][index] || '📋'}</Text></View>
                 <View style={{flex:1}}>
                   <Text style={styles.serviceTitle}>طلب {type}</Text>
-                  <Text style={styles.serviceSub}>إنشاء طلب جديد وإرفاق المستندات الخاصة به</Text>
+                  <Text style={styles.serviceSub}>إنشاء طلب جديد ومتابعة المراحل والمرفقات</Text>
                 </View>
                 <Text style={styles.chevron}>‹</Text>
               </TouchableOpacity>
             ))}
+
+            <Text style={[styles.sectionTitle, {marginTop: 20}]}>تقارير الرحلات</Text>
+            <TouchableOpacity style={styles.serviceCard} onPress={() => setUserTab('reports')}>
+              <View style={styles.serviceIcon}><Text style={{fontSize:22}}>📊</Text></View>
+              <View style={{flex:1}}>
+                <Text style={styles.serviceTitle}>تقارير رحلات ومصاريف السيارة</Text>
+                <Text style={styles.serviceSub}>عرض تفصيلي وإجمالي حسب التاريخ والنوع</Text>
+              </View>
+              <Text style={styles.chevron}>‹</Text>
+            </TouchableOpacity>
           </View>
         )}
-        {userTab === 'vehicle_info' && (
+
+        {userTab === 'notifications' && (
           <View>
-            <Text style={styles.sectionTitle}>بيانات السيارة</Text>
-            <View style={styles.card}>
-              {Object.entries(currentUser).filter(([k]) => k !== 'role').map(([k,v]) => (
-                <Text key={k} style={styles.infoRow}>{k}: {String(v)}</Text>
-              ))}
-            </View>
+            <Text style={styles.sectionTitle}>الإشعارات والتنبيهات</Text>
+            {notificationsList.map(n => (
+              <View key={n.id} style={styles.card}>
+                <Text style={styles.cardTitle}>{n.title}</Text>
+                <Text style={styles.cardText}>{n.body}</Text>
+                <Text style={[styles.helper, {textAlign: 'left', marginTop: 4}]}>{n.date}</Text>
+              </View>
+            ))}
           </View>
         )}
-        {userTab === 'reports' ? renderReports(false) : null}
+
+        {userTab === 'reports' && (
+          <View>
+            <Text style={styles.sectionTitle}>تقارير السيارة (إجمالي وتفصيلي)</Text>
+            {renderReportsAdmin()}
+            <TouchableOpacity style={[styles.secondaryBtn, {marginTop: 15}]} onPress={() => setUserTab('main')}>
+              <Text style={styles.btnText}>العودة للرئيسية</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {userTab === 'settings' && (
           <View>
-            <Text style={styles.sectionTitle}>إعدادات الحساب</Text>
+            <Text style={styles.sectionTitle}>الإعدادات</Text>
             <View style={styles.card}>
-              <Text style={styles.label}>اسم السائق</Text>
-              <TextInput style={styles.input} value={editDriverName} onChangeText={setEditDriverName} textAlign="right" />
-              <Text style={styles.label}>كلمة المرور الجديدة</Text>
-              <TextInput style={styles.input} secureTextEntry value={newPassword} onChangeText={setNewPassword} textAlign="right" />
-              <TouchableOpacity style={styles.primaryBtn} onPress={() => Alert.alert('تم الحفظ','تم حفظ التعديلات محليًا.')}>
-                <Text style={styles.btnText}>حفظ التعديلات</Text>
+              <View style={styles.switchRow}>
+                <Switch value={darkMode} onValueChange={setDarkMode} />
+                <Text style={styles.switchLabel}>الوضع الداكن</Text>
+              </View>
+              <View style={styles.infoRow}><Text style={styles.cardText}>بيانات السائق: {currentUser.driver}</Text></View>
+              <View style={styles.infoRow}><Text style={styles.cardText}>رقم السيارة: {currentUser.id}</Text></View>
+              <Text style={styles.label}>تغيير كلمة المرور</Text>
+              <TextInput style={styles.input} secureTextEntry value={newPassword} onChangeText={setNewPassword} placeholder="كلمة المرور الجديدة" textAlign="right" />
+              <TouchableOpacity style={styles.primaryBtn} onPress={() => Alert.alert('تم الحفظ', 'تم تحديث كلمة المرور.')}>
+                <Text style={styles.btnText}>حفظ التغييرات</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.logoutBar,{marginTop:10}]} onPress={handleLogout}>
+              <TouchableOpacity style={[styles.logoutBar, {marginTop: 15, borderRadius: 12}]} onPress={handleLogout}>
                 <Text style={styles.btnText}>تسجيل الخروج</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {userTab === 'about' && (
+          <View style={[styles.card, {alignItems: 'center', paddingVertical: 30}]}>
+            <View style={styles.headerAvatar}><Text style={{fontSize: 28}}>YCPD</Text></View>
+            <Text style={[styles.sectionTitle, {marginTop: 15}]}>الشركة اليمنية لصناعة الطلاء</Text>
+            <Text style={styles.cardText}>نظام إدارة الأسطول الذكي - إصدار {APP_VERSION}</Text>
+            <TouchableOpacity onPress={() => Linking.openURL('https://github.com')} style={{marginTop: 15}}>
+              <Text style={{color: COLORS.primary, fontWeight: 'bold'}}>زيارة موقع الشركة / الدعم الفني</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
+
+      {/* الشريط السفلي المحدث حسب الطلب */}
       <View style={styles.driverNav}>
         {[
-          ['service','🏠','الخدمات'], ['vehicle_info','🚗','السيارة'],
-          ['reports','📊','التقارير'], ['settings','⚙️','الإعدادات']
-        ].map(([key,icon,label]) => (
+          ['about', 'عنا', '🏢'],
+          ['notifications', 'الإشعارات', '🔔'],
+          ['main', 'الرئيسية', '🏠'],
+          ['settings', 'الإعدادات', '⚙️']
+        ].map(([key, label, icon]) => (
           <TouchableOpacity key={key} style={styles.driverNavItem} onPress={() => setUserTab(key)}>
-            <Text style={{fontSize:18}}>{icon}</Text>
-            <Text style={[styles.driverNavText,userTab === key && styles.activeNavText]}>{label}</Text>
+            <Text style={{fontSize: 18}}>{icon}</Text>
+            <Text style={[styles.driverNavText, userTab === key && styles.activeNavText]}>{label}</Text>
           </TouchableOpacity>
         ))}
       </View>
+
       {renderRequestModal()}
     </SafeAreaView>
   );
@@ -1043,7 +1126,7 @@ export default function App() {
 const styles = StyleSheet.create({
   container:{flex:1,backgroundColor:COLORS.bg},
   loginContainer:{flex:1,backgroundColor:COLORS.bg,justifyContent:'center',alignItems:'center',padding:20},
-  loginCard:{width:'100%',maxWidth:400,backgroundColor:'#fff',borderRadius:24,padding:26,elevation:5,shadowColor:'#000',shadowOpacity:.08,shadowRadius:12},
+  loginCard:{width:'100%',maxWidth:400,backgroundColor:'#fff',borderRadius:24,padding:26,elevation:5},
   loginSubtitle:{textAlign:'center',fontSize:20,fontWeight:'800',color:COLORS.text,marginBottom:22},
   input:{backgroundColor:'#F8FAFC',borderWidth:1,borderColor:COLORS.border,borderRadius:12,paddingHorizontal:14,paddingVertical:12,fontSize:15,color:COLORS.text,marginBottom:10},
   primaryBtn:{backgroundColor:COLORS.primary,borderRadius:12,padding:13,alignItems:'center',marginTop:6},
@@ -1097,7 +1180,6 @@ const styles = StyleSheet.create({
   switchRow:{flexDirection:'row-reverse',alignItems:'center',justifyContent:'space-between',borderTopWidth:1,borderTopColor:'#F1F5F9',paddingVertical:7},
   switchLabel:{flex:1,textAlign:'right',color:'#334155',marginRight:8},
   inlineRow:{flexDirection:'row-reverse',alignItems:'center',paddingVertical:10,borderBottomWidth:1,borderBottomColor:'#EEF2F7',gap:10},
-  editText:{color:'#2563EB',fontWeight:'800'},
   deleteText:{color:COLORS.danger,fontWeight:'800'},
   modalOverlay:{flex:1,backgroundColor:'rgba(15,23,42,.55)',justifyContent:'center'},
   modalCenter:{padding:16,justifyContent:'center'},
@@ -1105,7 +1187,6 @@ const styles = StyleSheet.create({
   modalTitle:{textAlign:'right',fontSize:20,fontWeight:'900',color:COLORS.text,marginBottom:12},
   infoPill:{flexDirection:'row-reverse',justifyContent:'space-between',backgroundColor:'#F8FAFC',borderRadius:10,padding:10,marginBottom:8},
   infoPillText:{color:COLORS.muted,fontSize:12,fontWeight:'700'},
-  calcText:{color:COLORS.primary,fontWeight:'800',textAlign:'right',marginBottom:8},
   totalText:{color:COLORS.primary,fontSize:18,fontWeight:'900',textAlign:'right',marginVertical:8},
   previewImage:{width:110,height:110,borderRadius:12,alignSelf:'flex-end',marginVertical:8},
   serviceCard:{backgroundColor:'#fff',borderRadius:18,padding:14,marginBottom:10,flexDirection:'row-reverse',alignItems:'center',gap:12,borderWidth:1,borderColor:'#EEF2F7',elevation:1},
@@ -1117,8 +1198,14 @@ const styles = StyleSheet.create({
   driverNavText:{color:'#64748B',fontSize:11,fontWeight:'600'},
   activeNavText:{color:COLORS.primary,fontWeight:'900'},
   infoRow:{textAlign:'right',paddingVertical:9,borderBottomWidth:1,borderBottomColor:'#EEF2F7',color:'#334155'},
-  filterBox:{backgroundColor:'#fff',borderRadius:15,padding:12,marginBottom:10},
   workflowTitle:{textAlign:'right',fontWeight:'800',color:COLORS.primary,marginTop:7},
   vehicleInfoBox:{backgroundColor:'#F8FAFC',borderRadius:14,padding:12,marginBottom:10,borderWidth:1,borderColor:COLORS.border},
   dropdownInput:{backgroundColor:'#F8FAFC',borderWidth:1,borderColor:COLORS.border,borderRadius:12,padding:13,marginBottom:10},
+  modalTabHeader:{flexDirection:'row-reverse',borderBottomWidth:1,borderBottomColor:COLORS.border,marginBottom:10},
+  modalTabBtn:{flex:1,paddingVertical:10,alignItems:'center',borderBottomWidth:3,borderBottomColor:'transparent'},
+  modalTabBtnActive:{borderBottomColor:COLORS.primary},
+  modalTabText:{fontWeight:'bold',color:COLORS.muted},
+  modalTabTextActive:{color:COLORS.primary},
+  attachmentBox:{backgroundColor:'#F8FAFC',borderRadius:12,padding:10,marginTop:8,borderWidth:1,borderColor:COLORS.border},
+  uploadBtn:{backgroundColor:'#FFF0F1',borderWidth:1,borderColor:COLORS.primary,borderRadius:10,padding:10,alignItems:'center'}
 });
