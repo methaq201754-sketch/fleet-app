@@ -5,7 +5,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 
-const APP_VERSION = '1.28.3';
+const APP_VERSION = '1.28.5';
 const APP_BUILD = '39';
 
 const COLORS = {
