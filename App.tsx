@@ -11,12 +11,12 @@ import * as FileSystem from 'expo-file-system';
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase Integration Setup & Keys
-const SUPABASE_URL = "https://i2cfia8tscmkgcgchggv1g.supabase.co";
+const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "Sb_publishable_0oUqPI_Mll1sDTjxo-IRoA_KuMEl_wv";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.39.21';
-const APP_BUILD = '56';
+const APP_VERSION = '1.53.17';
+const APP_BUILD = '53';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -161,63 +161,105 @@ export default function App() {
     payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'شركة'
   });
 
-  // جلب البيانات حصرياً ومباشرة من جدول vehicles في سحابة Supabase
+  // تحويل بيانات قاعدة البيانات إلى شكل التطبيق مع استخدام الجداول والأعمدة الفعلية.
+  const parseStoredNotes = (raw: any) => {
+    const text = String(raw || '');
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.__fleetApp === true) return parsed;
+    } catch (_) {}
+    return { __fleetApp: true, appNotes: text, appFields: {} };
+  };
+
+  const makeStoredNotes = (item: RequestItem) => JSON.stringify({
+    __fleetApp: true,
+    appNotes: item.notes || '',
+    appFields: {
+      fuelType: item.fuelType, oilType: item.oilType, itemName: item.itemName,
+      prevOdo: item.prevOdo, currOdo: item.currOdo, distance: item.distance,
+      workshop: item.workshop, engineer: item.engineer, faultType: item.faultType,
+      requiredWork: item.requiredWork, client: item.client,
+      serviceDescription: item.serviceDescription, approvalTrail: item.approvalTrail,
+      destination: item.destination, startDate: item.startDate, endDate: item.endDate,
+      returnDate: item.returnDate, daysCount: item.daysCount, custody: item.custody,
+      imageUri: item.imageUri
+    }
+  });
+
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
-      const { data: vData, error } = await supabase.from('vehicles').select('*');
-      const { data: rData } = await supabase.from('vehicle_requests').select('*');
+      const { data: vData, error: vError } = await supabase.from('vehicles').select('*').order('car_number');
+      if (vError) throw vError;
 
-      if (error) {
-        console.log("خطأ جلب بيانات السيارات من السحابة:", error.message);
-      }
-
-      if (vData && vData.length > 0) {
-        const mappedFleet: Vehicle[] = vData.map((v: any) => {
-          const carNo = String(v.car_number || v.id || '').trim();
-          return {
-            id: carNo,
-            name: v.car_name || v.name || `سيارة ${carNo}`,
-            driver: v.driver || 'سائق معتمد',
-            status: v.status || 'في الخدمة',
-            type: v.brand || v.type || 'سيارة',
-            model: String(v.manufacturing_year || v.model || '2015'),
-            payload: v.load_capacity || '5 طن',
-            fuelType: 'ديزل',
-            engineNo: v.engine_number || `ENG-${carNo}`,
-            chassisNo: v.chassis_number || `CHS-${carNo}`,
-            ownership: 'شركة'
-          };
+      // جدول vehicles الحالي لا يخزن اسم السائق. لدى المسؤول نطابق حسابات profiles
+      // مع رقم السيارة (username = car_number) دون افتراض أعمدة غير موجودة.
+      let driverByCar: Record<string, string> = {};
+      if (currentUser?.role === 'admin') {
+        const { data: pData, error: pError } = await supabase
+          .from('profiles').select('username, full_name, role, is_active');
+        if (pError) throw pError;
+        (pData || []).forEach((p: any) => {
+          const key = String(p.username || '').trim();
+          if (/^\d+$/.test(key) && p.full_name && p.is_active !== false) driverByCar[key] = p.full_name;
         });
-        setFleet(mappedFleet);
-      } else {
-        setFleet([]);
       }
+      const mappedFleet: Vehicle[] = (vData || []).map((v: any) => {
+        const carNo = String(v.car_number || '').trim();
+        return {
+          id: carNo,
+          name: v.car_name || `سيارة ${carNo}`,
+          driver: driverByCar[carNo] || (currentUser?.role === 'driver' && String(currentUser.id) === carNo ? currentUser.driver || currentUser.name || '' : ''),
+          status: 'في الخدمة',
+          type: v.brand || 'سيارة',
+          model: String(v.manufacturing_year || v.model || ''),
+          payload: v.load_capacity || '',
+          fuelType: 'ديزل',
+          engineNo: v.engine_number || '',
+          chassisNo: v.chassis_number || '',
+          ownership: 'شركة'
+        };
+      });
+      setFleet(mappedFleet);
 
-      if (rData) {
-        const mappedReqs: RequestItem[] = rData.map((r: any) => ({
-          id: `REQ-${r.id}`,
-          vehicleId: String(r.car_id || ''),
-          driver: 'سائق',
-          type: r.type || 'خدمة/حركة',
-          date: r.created_at ? r.created_at.slice(0, 10) : TODAY(),
-          qty: 1, total: 0,
-          status: r.status === 'Approved' ? 'تمت الموافقة' : (r.status === 'Rejected' ? 'مرفوض' : 'تحت المراجعة'),
-          workflow: r.status,
-          notes: r.request_details
-        }));
-        setRequests(mappedReqs);
-      }
-    } catch (e) {
-      console.log("Supabase Fetch Error:", e);
+      // جدول requests هو جدول الطلبات المتوافق مع مخطط قاعدة البيانات الحالي.
+      const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
+      if (rError) throw rError;
+      const mappedReqs: RequestItem[] = (rData || []).map((r: any) => {
+        const stored = parseStoredNotes(r.notes);
+        const extra = stored.appFields || {};
+        const stage = r.status === 'مرفوض' || r.status === 'تم رفض الطلب' ? 'تم رفض الطلب'
+          : r.status === 'تمت الموافقة' || r.status === 'تم الاعتماد' ? 'تمت الموافقة'
+          : (r.direct_manager_status === 'موافق' || r.direct_manager_status === 'تمت الموافقة')
+            ? ((r.services_status === 'موافق' || r.services_status === 'تمت الموافقة') ? 'المسؤول' : 'الخدمات الإدارية')
+            : 'المسؤول المباشر';
+        return {
+          id: String(r.id), vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
+          type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
+          qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
+          notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
+          currOdo: r.odometer == null ? undefined : Number(r.odometer), workflow: stage,
+          imageUri: extra.imageUri, fuelType: extra.fuelType, oilType: extra.oilType,
+          itemName: extra.itemName, prevOdo: extra.prevOdo, distance: extra.distance,
+          workshop: extra.workshop, engineer: extra.engineer, faultType: extra.faultType,
+          requiredWork: extra.requiredWork, client: extra.client, serviceDescription: extra.serviceDescription,
+          approvalTrail: extra.approvalTrail || [], destination: extra.destination,
+          startDate: extra.startDate, endDate: extra.endDate, returnDate: extra.returnDate,
+          daysCount: extra.daysCount, custody: extra.custody
+        };
+      });
+      setRequests(mappedReqs);
+    } catch (e: any) {
+      console.log('Supabase Fetch Error:', e?.message || e);
+      Alert.alert('تعذر المزامنة', `لم يتم تحميل البيانات من Supabase.\n${e?.message || 'تحقق من الاتصال والصلاحيات.'}`);
     } finally {
       setLoadingDb(false);
     }
   };
 
   useEffect(() => {
-    loadSupabaseData();
-  }, []);
+    if (currentUser?.authId) loadSupabaseData();
+  }, [currentUser?.authId]);
 
   const getPermission = (vehicleId: string): PermissionSet =>
     permissions[vehicleId] || DEFAULT_PERMISSIONS;
@@ -229,7 +271,7 @@ export default function App() {
 
   const lastOdometer = (vehicleId: string) => {
     const rows = requests.filter(r => r.vehicleId === vehicleId && r.type === 'زيوت' && r.currOdo != null);
-    return rows.length ? Number(rows[rows.length - 1].currOdo) || 0 : 0;
+    return rows.length ? Number(rows[0].currOdo) || 0 : 0;
   };
 
   const requestTypes = ['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات', 'إرسالية صيانة', 'إرسالية بنشر وخدمات'];
@@ -257,41 +299,65 @@ export default function App() {
 
   const assignmentVehicle = fleet.find(v => v.id === assignmentForm.vehicleId.trim());
 
-  // التحقق من تسجيل الدخول حصرياً عبر بيانات السحابة
-  const handleLogin = () => {
+  // Supabase Auth يتطلب البريد وكلمة المرور. اسم المستخدم يُحوّل إلى البريد الاصطناعي المستخدم عند إنشاء حساب Auth.
+  const handleLogin = async () => {
     const u = username.trim(), p = password.trim();
     if (!u || !p) {
-      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم / رقم السيارة وكلمة المرور');
+      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم أو رقم السيارة وكلمة المرور');
       return;
     }
-    if (u === 'ميثاق' && p === '111') {
-      setCurrentUser({ role: 'admin', name: 'ميثاق' });
-      setUsername(''); setPassword(''); return;
-    }
-
-    const found = fleet.find(v => v.id === u);
-    if (found) {
-      if (p === '000' || p === '123' || p === '') {
-        if (found.status === 'موقف') {
-          Alert.alert('الحساب موقوف', 'هذه السيارة موقوفة حالياً وممنوعة من تقديم الطلبات.');
-          return;
-        }
-        setCurrentUser({ role: 'driver', ...found });
-        setEditDriverName(found.driver);
-        setUsername(''); setPassword(''); return;
-      } else {
-        Alert.alert('خطأ', 'كلمة المرور غير صحيحة (افتراضي: 000)');
+    try {
+      setLoadingDb(true);
+      const email = u.includes('@') ? u : `${u.toLowerCase()}@fleet.local`;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password: p });
+      if (error || !data.user) {
+        Alert.alert('تعذر تسجيل الدخول', 'تأكد من أن حساب Auth أُنشئ بالبريد المستخدم بالشكل username@fleet.local وأن كلمة المرور صحيحة.');
         return;
       }
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles').select('id, username, full_name, role, phone, is_active, must_change_password')
+        .eq('id', data.user.id).maybeSingle();
+      if (profileError || !profile) {
+        await supabase.auth.signOut();
+        Alert.alert('الحساب غير مربوط', 'تم تسجيل الدخول، لكن لم يوجد سجل مطابق في جدول profiles.');
+        return;
+      }
+      if (profile.is_active === false) {
+        await supabase.auth.signOut();
+        Alert.alert('الحساب موقوف', 'هذا الحساب غير مفعّل. راجع مسؤول النظام.');
+        return;
+      }
+      const roleRaw = String(profile.role || '').toLowerCase();
+      const isAdmin = ['admin','administrator','manager','services_manager','مسؤول','مدير','مدير عام','مدير الخدمات'].includes(roleRaw);
+      if (isAdmin) {
+        setCurrentUser({ role: 'admin', authId: data.user.id, username: profile.username, name: profile.full_name || profile.username, profile });
+      } else {
+        const carNumber = /^\d+$/.test(u) ? u : String(profile.username || u);
+        const { data: vehicle, error: vehicleError } = await supabase.from('vehicles').select('*').eq('car_number', carNumber).maybeSingle();
+        if (vehicleError || !vehicle) {
+          await supabase.auth.signOut();
+          Alert.alert('السيارة غير مربوطة', 'الحساب مسجل، لكن لا توجد سيارة مرتبطة باسم المستخدم/رقم السيارة في جدول vehicles.');
+          return;
+        }
+        const v: Vehicle = {
+          id: String(vehicle.car_number), name: vehicle.car_name || `سيارة ${vehicle.car_number}`,
+          driver: profile.full_name || '', status: 'في الخدمة', type: vehicle.brand || 'سيارة',
+          model: String(vehicle.manufacturing_year || vehicle.model || ''), payload: vehicle.load_capacity || '',
+          fuelType: 'ديزل', engineNo: vehicle.engine_number || '', chassisNo: vehicle.chassis_number || '', ownership: 'شركة'
+        };
+        setCurrentUser({ role: 'driver', authId: data.user.id, username: profile.username, ...v, profile });
+        setEditDriverName(v.driver);
+      }
+      setUsername(''); setPassword('');
+    } catch (e: any) {
+      Alert.alert('خطأ في تسجيل الدخول', e?.message || 'تعذر الاتصال بخدمة تسجيل الدخول.');
+    } finally {
+      setLoadingDb(false);
     }
-    Alert.alert('غير موجود', `رقم السيارة "${u}" غير موجود في قاعدة البيانات السحابية.
-
-تأكد من:
-1. الضغط على زر "مزامنـة السيارات من السحابة".
-2. صحة رقم السيارة.`);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setCurrentUser(null); setUserTab('service'); setAdminTab('requests');
   };
 
@@ -347,11 +413,12 @@ export default function App() {
     }
   };
 
-  const submitRequest = () => {
+  const submitRequest = async () => {
     if (!currentUser || !serviceTypeModal) return;
+    if (!currentUser.authId) { Alert.alert('تسجيل الدخول مطلوب', 'أعد تسجيل الدخول قبل إرسال الطلب.'); return; }
 
     const item: RequestItem = {
-      id: getNextRequestId(), vehicleId: currentUser.id, driver: currentUser.driver,
+      id: getNextRequestId(), vehicleId: currentUser.id, driver: currentUser.driver || currentUser.name || '',
       type: serviceTypeModal, date: TODAY(), qty: 1, total: 0,
       status: 'تحت المراجعة', workflow: 'المسؤول المباشر',
       notes: reqNotes, imageUri: reqImage, approvalTrail: ['أرسل السائق الطلب'],
@@ -360,68 +427,92 @@ export default function App() {
     if (serviceTypeModal === 'وقود') {
       const qty = Number(reqQty);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
-      item.qty = qty; item.total = qty * currentUnitPrice();
-      item.station = selectedStation; item.fuelType = selectedFuel;
+      item.qty = qty; item.total = qty * currentUnitPrice(); item.station = selectedStation; item.fuelType = selectedFuel;
     } else if (serviceTypeModal === 'زيوت') {
-      const qty = Number(reqQty);
-      const odo = Number(currOdometer);
-      const prev = lastOdometer(currentUser.id);
+      const qty = Number(reqQty); const odo = Number(currOdometer); const prev = lastOdometer(currentUser.id);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
       if (!odo || odo < prev) { Alert.alert('تنبيه', `العداد الحالي يجب أن يكون أكبر أو يساوي ${prev}.`); return; }
-      item.qty = qty; item.total = qty * currentUnitPrice(); item.oilType = selectedOil;
-      item.unit = selectedUnit; item.prevOdo = prev; item.currOdo = odo; item.distance = odo - prev;
+      item.qty = qty; item.total = qty * currentUnitPrice(); item.oilType = selectedOil; item.unit = selectedUnit;
+      item.prevOdo = prev; item.currOdo = odo; item.distance = odo - prev;
     } else if (serviceTypeModal === 'بطاريات') {
-      item.itemName = selectedBattery; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
+      item.itemName = selectedBattery; item.qty = Number(reqQty) || 1; item.total = item.qty * currentUnitPrice();
     } else if (serviceTypeModal === 'قطع غيار') {
-      item.itemName = selectedPart; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
+      item.itemName = selectedPart; item.qty = Number(reqQty) || 1; item.total = item.qty * currentUnitPrice();
     } else if (serviceTypeModal === 'إطارات') {
-      item.itemName = selectedTire; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
+      item.itemName = selectedTire; item.qty = Number(reqQty) || 1; item.total = item.qty * currentUnitPrice();
     } else if (serviceTypeModal === 'صيانة') {
-      item.itemName = selectedMaintenance; item.qty = Number(reqQty) || 1;
-      item.total = item.qty * currentUnitPrice();
-      item.workshop = selectedWorkshop; item.engineer = selectedEngineer;
-      item.faultType = faultType; item.requiredWork = requiredWork;
+      item.itemName = selectedMaintenance; item.qty = Number(reqQty) || 1; item.total = item.qty * currentUnitPrice();
+      item.workshop = selectedWorkshop; item.engineer = selectedEngineer; item.faultType = faultType; item.requiredWork = requiredWork;
     } else if (serviceTypeModal === 'إرسالية صيانة') {
       if (!selectedWorkshop || !selectedEngineer || !faultType.trim() || !requiredWork.trim()) {
         Alert.alert('تنبيه', 'أكمل الورشة والمهندس ونوع العطل والعمل المطلوب.'); return;
       }
-      item.qty = 1; item.total = 0;
-      item.workshop = selectedWorkshop; item.engineer = selectedEngineer;
+      item.qty = 1; item.total = 0; item.workshop = selectedWorkshop; item.engineer = selectedEngineer;
       item.faultType = faultType; item.requiredWork = requiredWork;
     } else if (serviceTypeModal === 'إرسالية بنشر وخدمات') {
-      if (!selectedClient || !serviceDescription.trim()) {
-        Alert.alert('تنبيه', 'اختر العميل واكتب الخدمة المطلوبة.'); return;
-      }
-      item.qty = 1; item.total = 0;
-      item.client = selectedClient; item.serviceDescription = serviceDescription;
+      if (!selectedClient || !serviceDescription.trim()) { Alert.alert('تنبيه', 'اختر العميل واكتب الخدمة المطلوبة.'); return; }
+      item.qty = 1; item.total = 0; item.client = selectedClient; item.serviceDescription = serviceDescription;
     }
 
-    setRequests(prev => [...prev, item]);
-    setNotifications(prev => [{id:`NTF-${Date.now()}`,title:'طلب جديد',body:`تم إرسال ${item.type} رقم ${item.id}`,date:TODAY(),target:'المسؤول'}, ...prev]);
-    setServiceTypeModal(null);
-    resetRequestForm();
-    setUserTab('my_requests');
-    Alert.alert('تم إرسال الطلب', 'تم إرسال الطلب ومتابعته سحابياً بنجاح.');
+    try {
+      const { error } = await supabase.from('requests').insert({
+        id: item.id, vehicle_id: item.vehicleId, applicant_id: currentUser.authId,
+        driver_name: item.driver, service_type: item.type, request_date: item.date,
+        quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
+        total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
+        notes: makeStoredNotes(item), image_url: null, status: 'تحت المراجعة',
+        direct_manager_status: 'قيد المراجعة', services_status: 'قيد المراجعة',
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      setRequests(prev => [item, ...prev]);
+      setNotifications(prev => [{id:`NTF-${Date.now()}`,title:'طلب جديد',body:`تم إرسال ${item.type} رقم ${item.id}`,date:TODAY(),target:'المسؤول'}, ...prev]);
+      setServiceTypeModal(null); resetRequestForm(); setUserTab('my_requests');
+      Alert.alert('تم إرسال الطلب', 'تم حفظ الطلب في قاعدة Supabase بنجاح.');
+    } catch (e: any) {
+      Alert.alert('تعذر حفظ الطلب', e?.message || 'تحقق من اتصال الإنترنت وسياسات صلاحيات جدول requests.');
+    }
   };
 
-  const advanceRequest = (id: string) => {
-    setRequests(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      const stage = r.workflow || 'المسؤول المباشر';
-      if (stage === 'المسؤول المباشر') return { ...r, workflow: 'الخدمات الإدارية', status: 'تحت المراجعة', approvalTrail:[...(r.approvalTrail||[]),'وافق المسؤول المباشر'] };
-      if (stage === 'الخدمات الإدارية') return { ...r, workflow: 'المسؤول', status: 'تحت المراجعة', approvalTrail:[...(r.approvalTrail||[]),'وافقت الخدمات الإدارية'] };
-      if (stage === 'المسؤول') return { ...r, workflow: 'تمت الموافقة', status: 'تمت الموافقة', approvalTrail:[...(r.approvalTrail||[]),'تمت الموافقة النهائية'] };
-      return r;
-    }));
+  const advanceRequest = async (id: string) => {
+    const req = requests.find(r => r.id === id);
+    if (!req) return;
+    let patch: any = {};
+    let updated: RequestItem = { ...req };
+    const stage = req.workflow || 'المسؤول المباشر';
+    if (stage === 'المسؤول المباشر') {
+      patch = { direct_manager_status: 'موافق', status: 'تحت المراجعة' };
+      updated = { ...req, workflow: 'الخدمات الإدارية', status: 'تحت المراجعة', approvalTrail:[...(req.approvalTrail||[]),'وافق المسؤول المباشر'] };
+    } else if (stage === 'الخدمات الإدارية') {
+      patch = { services_status: 'موافق', status: 'تحت المراجعة' };
+      updated = { ...req, workflow: 'المسؤول', status: 'تحت المراجعة', approvalTrail:[...(req.approvalTrail||[]),'وافقت الخدمات الإدارية'] };
+    } else if (stage === 'المسؤول') {
+      patch = { status: 'تمت الموافقة', direct_manager_status: 'موافق', services_status: 'موافق', reviewed_by: currentUser?.authId || null, reviewed_at: new Date().toISOString() };
+      updated = { ...req, workflow: 'تمت الموافقة', status: 'تمت الموافقة', approvalTrail:[...(req.approvalTrail||[]),'تمت الموافقة النهائية'] };
+    } else return;
+    try {
+      patch.notes = makeStoredNotes(updated); patch.updated_at = new Date().toISOString();
+      const { error } = await supabase.from('requests').update(patch).eq('id', id);
+      if (error) throw error;
+      setRequests(prev => prev.map(r => r.id === id ? updated : r));
+      Alert.alert('تم التحديث', 'تم حفظ قرار الموافقة في قاعدة البيانات.');
+    } catch (e: any) { Alert.alert('تعذر تحديث الطلب', e?.message || 'تحقق من صلاحيات التعديل.'); }
   };
 
-  const rejectRequest = (id: string) => {
-    setRequests(prev => prev.map(r =>
-      r.id === id ? { ...r, workflow: 'تم رفض الطلب', status: 'تم رفض الطلب', approvalTrail:[...(r.approvalTrail||[]),`تم رفض الطلب في مرحلة ${r.workflow || 'المسؤول المباشر'}`] } : r
-    ));
+  const rejectRequest = async (id: string) => {
+    const req = requests.find(r => r.id === id);
+    if (!req) return;
+    const updated = { ...req, workflow: 'تم رفض الطلب', status: 'مرفوض', approvalTrail:[...(req.approvalTrail||[]),`تم رفض الطلب في مرحلة ${req.workflow || 'المسؤول المباشر'}`] };
+    try {
+      const { error } = await supabase.from('requests').update({
+        status: 'مرفوض', rejection_reason: `تم رفض الطلب في مرحلة ${req.workflow || 'المراجعة'}`,
+        reviewed_by: currentUser?.authId || null, reviewed_at: new Date().toISOString(),
+        notes: makeStoredNotes(updated), updated_at: new Date().toISOString()
+      }).eq('id', id);
+      if (error) throw error;
+      setRequests(prev => prev.map(r => r.id === id ? updated : r));
+      Alert.alert('تم رفض الطلب', 'تم حفظ حالة الرفض في قاعدة البيانات.');
+    } catch (e: any) { Alert.alert('تعذر رفض الطلب', e?.message || 'تحقق من صلاحيات التعديل.'); }
   };
 
   const saveCodingItem = () => {
@@ -449,18 +540,13 @@ export default function App() {
   };
 
   const exportExcel = async (rows: RequestItem[], filename: string) => {
-    const exportExcel = async (rows: RequestItem[], filename: string) => {
     const header = 'الطلب,السيارة,السائق,النوع,التاريخ,الكمية,التكلفة,الحالة,المرحلة\n';
     const body = rows.map(r =>
-      [r.id, r.vehicleId, r.driver, r.type, r.date, r.qty, r.total, r.status, r.workflow || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+      [r.id, r.vehicleId, r.driver, r.type, r.date, r.qty, r.total, r.status, r.workflow || ''].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')
     ).join('\n');
     const uri = `${FileSystem.cacheDirectory}${filename}-${Date.now()}.csv`;
-    await FileSystem.writeAsStringAsync(uri, header + body);
-    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
-  };
-    const uri = `${FileSystem.cacheDirectory}${filename}-${Date.now()}.csv`;
-    await FileSystem.writeAsStringAsync(uri, header + body);
-    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+    await FileSystem.writeAsStringAsync(uri, header + body, { encoding: FileSystem.EncodingType.UTF8 });
+    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri, { mimeType: 'text/csv', dialogTitle: 'تصدير التقرير' });
   };
 
   const exportPdf = async (rows: RequestItem[], title: string) => {
@@ -629,24 +715,30 @@ export default function App() {
       setVehicleModalVisible(true);
     };
 
-    const saveVehicle = () => {
+    const saveVehicle = async () => {
       if (!vehicleForm.id.trim() || !vehicleForm.name.trim() || !vehicleForm.type.trim()) {
-        Alert.alert('تنبيه', 'رقم السيارة واسم السيارة والنوع حقول مطلوبة.');
-        return;
+        Alert.alert('تنبيه', 'رقم السيارة واسم السيارة والنوع حقول مطلوبة.'); return;
       }
       if (!vehicleEditId && fleet.some(v => v.id === vehicleForm.id.trim())) {
-        Alert.alert('تنبيه', 'رقم السيارة موجود مسبقًا.');
-        return;
+        Alert.alert('تنبيه', 'رقم السيارة موجود مسبقًا.'); return;
       }
       const value = { ...vehicleForm, id: vehicleForm.id.trim(), name: vehicleForm.name.trim() };
-      if (vehicleEditId) {
-        setFleet(prev => prev.map(v => v.id === vehicleEditId ? value : v));
-        if (currentUser?.role === 'driver' && currentUser.id === vehicleEditId) setCurrentUser({ role: 'driver', ...value });
-      } else {
-        setFleet(prev => [...prev, value]);
-      }
-      setVehicleModalVisible(false);
-      Alert.alert('تم الحفظ', vehicleEditId ? 'تم تعديل بيانات السيارة.' : 'تمت إضافة السيارة.');
+      const row = {
+        car_number: value.id, car_name: value.name, brand: value.type || null,
+        manufacturing_year: Number(value.model) || null, model: value.model || null,
+        load_capacity: value.payload || null, engine_number: value.engineNo || null,
+        chassis_number: value.chassisNo || null
+      };
+      try {
+        const result = vehicleEditId
+          ? await supabase.from('vehicles').update(row).eq('car_number', vehicleEditId)
+          : await supabase.from('vehicles').insert(row);
+        if (result.error) throw result.error;
+        if (vehicleEditId) setFleet(prev => prev.map(v => v.id === vehicleEditId ? value : v));
+        else setFleet(prev => [...prev, value]);
+        setVehicleModalVisible(false);
+        Alert.alert('تم الحفظ', 'تم حفظ بيانات السيارة في قاعدة البيانات. ملاحظة: ربط السائق والملكية والحالة غير موجود كأعمدة في جدول vehicles الحالي، لذلك تبقى هذه الحقول داخل واجهة التطبيق فقط.');
+      } catch (e: any) { Alert.alert('تعذر حفظ السيارة', e?.message || 'تحقق من صلاحيات جدول vehicles.'); }
     };
 
     return (
