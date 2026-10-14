@@ -15,8 +15,8 @@ const SUPABASE_URL = "https://i2cfia8tscmkgcgchggv1g.supabase.co";
 const SUPABASE_ANON_KEY = "Sb_publishable_0oUqPI_Mll1sDTjxo-IRoA_KuMEl_wv";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.52.16';
-const APP_BUILD = '52';
+const APP_VERSION = '1.39.21';
+const APP_BUILD = '56';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -449,12 +449,15 @@ export default function App() {
   };
 
   const exportExcel = async (rows: RequestItem[], filename: string) => {
-        const header = 'الطلب,السيارة,السائق,النوع,التاريخ,الكمية,التكلفة,الحالة,المرحلة\n';
-
+    const exportExcel = async (rows: RequestItem[], filename: string) => {
+    const header = 'الطلب,السيارة,السائق,النوع,التاريخ,الكمية,التكلفة,الحالة,المرحلة\n';
     const body = rows.map(r =>
       [r.id, r.vehicleId, r.driver, r.type, r.date, r.qty, r.total, r.status, r.workflow || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
-    ).join('
-');
+    ).join('\n');
+    const uri = `${FileSystem.cacheDirectory}${filename}-${Date.now()}.csv`;
+    await FileSystem.writeAsStringAsync(uri, header + body);
+    if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
+  };
     const uri = `${FileSystem.cacheDirectory}${filename}-${Date.now()}.csv`;
     await FileSystem.writeAsStringAsync(uri, header + body);
     if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(uri);
