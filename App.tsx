@@ -449,8 +449,8 @@ export default function App() {
   };
 
   const exportExcel = async (rows: RequestItem[], filename: string) => {
-    const header = 'الطلب,السيارة,السائق,النوع,التاريخ,الكمية,التكلفة,الحالة,المرحلة
-';
+        const header = 'الطلب,السيارة,السائق,النوع,التاريخ,الكمية,التكلفة,الحالة,المرحلة\n';
+
     const body = rows.map(r =>
       [r.id, r.vehicleId, r.driver, r.type, r.date, r.qty, r.total, r.status, r.workflow || ''].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
     ).join('
