@@ -72,7 +72,9 @@ export default function App() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
+  // القائمة تبدأ فارغة تماماً لكي يتم جلبها حصرياً ومباشرة من قاعدة البيانات السحابية فقط
   const [fleet, setFleet] = useState<Vehicle[]>([]);
+
   const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
   const [fuelTypes, setFuelTypes] = useState<string[]>(['ديزل', 'بترول']);
   const [oils, setOils] = useState<string[]>(['تويوتا', 'ليكوي مولي', 'ناشيونال']);
@@ -99,7 +101,6 @@ export default function App() {
   const [userTab, setUserTab] = useState('service');
   const [adminTab, setAdminTab] = useState('requests');
   const [notifications, setNotifications] = useState<{id:string;title:string;body:string;date:string;target:string}[]>([]);
-  const [darkMode, setDarkMode] = useState(false);
   const [loadingDb, setLoadingDb] = useState(false);
 
   const [tripType, setTripType] = useState('مهمة عمل');
@@ -110,7 +111,6 @@ export default function App() {
   const [tripCustody, setTripCustody] = useState('0');
   const [tripTypes, setTripTypes] = useState<string[]>(['مهمة عمل','توصيل مواد','مراجعة جهة']);
   const [tripDestinations, setTripDestinations] = useState<string[]>(['صنعاء','عدن','الحديدة','إب','ذمار','رداع']);
-  const [tripRequests, setTripRequests] = useState<any[]>([]);
 
   const [noticeTitle, setNoticeTitle] = useState('');
   const [noticeBody, setNoticeBody] = useState('');
@@ -120,7 +120,6 @@ export default function App() {
 
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
   const [codingModal, setCodingModal] = useState<string | null>(null);
-  const [itemEditor, setItemEditor] = useState({ index: -1, value: '' });
   const [newItem, setNewItem] = useState('');
 
   const [selectedStation, setSelectedStation] = useState(stations[0]);
@@ -144,7 +143,6 @@ export default function App() {
   const [serviceDescription, setServiceDescription] = useState('');
 
   const [editDriverName, setEditDriverName] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [reportFrom, setReportFrom] = useState('');
   const [reportTo, setReportTo] = useState('');
   const [reportType, setReportType] = useState('الكل');
@@ -163,7 +161,7 @@ export default function App() {
     payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'شركة'
   });
 
-  // Load Data from Supabase
+  // جلب البيانات حصرياً ومباشرة من جدول vehicles في سحابة Supabase
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
@@ -171,7 +169,7 @@ export default function App() {
       const { data: rData } = await supabase.from('vehicle_requests').select('*');
 
       if (error) {
-        console.log("خطأ جلب بيانات السيارات:", error.message);
+        console.log("خطأ جلب بيانات السيارات من السحابة:", error.message);
       }
 
       if (vData && vData.length > 0) {
@@ -192,6 +190,8 @@ export default function App() {
           };
         });
         setFleet(mappedFleet);
+      } else {
+        setFleet([]);
       }
 
       if (rData) {
@@ -257,16 +257,18 @@ export default function App() {
 
   const assignmentVehicle = fleet.find(v => v.id === assignmentForm.vehicleId.trim());
 
+  // التحقق من تسجيل الدخول حصرياً عبر بيانات السحابة
   const handleLogin = () => {
     const u = username.trim(), p = password.trim();
     if (!u || !p) {
-      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم ورقم المرور');
+      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم / رقم السيارة وكلمة المرور');
       return;
     }
     if (u === 'ميثاق' && p === '111') {
       setCurrentUser({ role: 'admin', name: 'ميثاق' });
       setUsername(''); setPassword(''); return;
     }
+
     const found = fleet.find(v => v.id === u);
     if (found) {
       if (p === '000' || p === '123' || p === '') {
@@ -282,7 +284,11 @@ export default function App() {
         return;
       }
     }
-    Alert.alert('خطأ في الدخول', `رقم السيارة "${u}" غير مسجل في قاعدة البيانات السحابية.`);
+    Alert.alert('غير موجود', `رقم السيارة "${u}" غير موجود في قاعدة البيانات السحابية.
+
+تأكد من:
+1. الضغط على زر "مزامنـة السيارات من السحابة".
+2. صحة رقم السيارة.`);
   };
 
   const handleLogout = () => {
@@ -398,7 +404,7 @@ export default function App() {
     setServiceTypeModal(null);
     resetRequestForm();
     setUserTab('my_requests');
-    Alert.alert('تم إرسال الطلب', 'تم إرسال الطلب ويمكن متابعة مساره من التقارير.');
+    Alert.alert('تم إرسال الطلب', 'تم إرسال الطلب ومتابعته سحابياً بنجاح.');
   };
 
   const advanceRequest = (id: string) => {
@@ -422,13 +428,8 @@ export default function App() {
     if (!codingModal || !newItem.trim()) return;
     const setter = codingSetters[codingModal];
     if (!setter) return;
-    setter(prev => {
-      const copy = [...prev];
-      if (itemEditor.index >= 0) copy[itemEditor.index] = newItem.trim();
-      else copy.push(newItem.trim());
-      return copy;
-    });
-    setNewItem(''); setItemEditor({ index: -1, value: '' });
+    setter(prev => [...prev, newItem.trim()]);
+    setNewItem('');
   };
 
   const deleteCodingItem = (key: string, index: number) => {
@@ -660,7 +661,7 @@ export default function App() {
         </ScrollView>
 
         <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}>
-          <Text style={styles.btnText}>🔄 مزامنة السيارات من قاعدة البيانات السحابية</Text>
+          <Text style={styles.btnText}>🔄 مزامنة السيارات من السحابة</Text>
         </TouchableOpacity>
 
         {filtered.map(v => (
@@ -1011,7 +1012,6 @@ export default function App() {
                 <Text style={styles.chevron}>‹</Text>
               </TouchableOpacity>
             ))}
-            <TouchableOpacity style={styles.serviceCard} onPress={() => setUserTab('trips')}><View style={styles.serviceIcon}><Text style={{fontSize:24}}>🧭</Text></View><View style={{flex:1}}><Text style={styles.serviceTitle}>طلب رحلة</Text><Text style={styles.serviceSub}>طلب رحلة وتقارير الرحلات</Text></View></TouchableOpacity>
             <TouchableOpacity style={styles.serviceCard} onPress={() => setUserTab('reports')}><View style={styles.serviceIcon}><Text style={{fontSize:24}}>📊</Text></View><View style={{flex:1}}><Text style={styles.serviceTitle}>التقارير</Text><Text style={styles.serviceSub}>إجمالي وتفصيلي حسب الطلبات</Text></View></TouchableOpacity>
           </View>
         )}
