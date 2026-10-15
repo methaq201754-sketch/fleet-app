@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6InFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.59.22';
-const APP_BUILD = '59';
+const APP_VERSION = '1.60.23';
+const APP_BUILD = '60';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -231,7 +231,7 @@ export default function App() {
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes,
   };
 
-  // دالة تسجيل الدخول المطابقة والمحسنة كلياً للمسؤولين والسائقين
+  // دالة تسجيل الدخول المباشرة والمحسنة من Supabase
   const handleLogin = async () => {
     const inputUser = username.trim();
     const inputPass = password.trim();
@@ -244,90 +244,42 @@ export default function App() {
     try {
       setLoadingDb(true);
 
-      // 1. جلب كافة الموظفين من جدول employees ومقارنتهم محلياً بمرونة تامة
-      const { data: empList, error: empError } = await supabase
+      const { data, error } = await supabase
         .from('employees')
-        .select('*');
+        .select('*')
+        .or(`username.eq.${inputUser},full_name.eq.${inputUser},employee_code.eq.${inputUser}`)
+        .eq('password', inputPass);
 
-      if (empList && empList.length > 0) {
-        // البحث عن المسؤولين (super_admin أو manager)
-        const matchedAdmin = empList.find((emp: any) => {
-          const uName = String(emp.username || '').trim();
-          const fName = String(emp.full_name || '').trim();
-          const eCode = String(emp.employee_code || '').trim();
-          const ePass = String(emp.password || '').trim();
-          const eRole = String(emp.role || '').trim();
+      if (error) throw error;
 
-          const isUserMatch = (uName === inputUser || fName === inputUser || eCode === inputUser);
-          const isPassMatch = (inputPass === ePass);
-          const isAdminRole = (eRole === 'super_admin' || eRole === 'manager');
+      if (data && data.length > 0) {
+        const emp = data[0];
+        const role = String(emp.role || '').trim();
 
-          return isUserMatch && isPassMatch && isAdminRole;
-        });
-
-        if (matchedAdmin) {
+        if (role === 'super_admin' || role === 'manager') {
           setCurrentUser({
             role: 'admin',
-            id: matchedAdmin.employee_code || matchedAdmin.username,
-            name: matchedAdmin.full_name || matchedAdmin.username,
-            department: matchedAdmin.department,
-            profile: matchedAdmin
+            id: emp.employee_code || emp.username,
+            name: emp.full_name || emp.username,
+            department: emp.department,
+            profile: emp
           });
-          setUsername(''); setPassword('');
-          setLoadingDb(false);
-          return;
-        }
-
-        // البحث عن السائقين أو الموظفين العاديين
-        const matchedDriver = empList.find((emp: any) => {
-          const eCode = String(emp.employee_code || '').trim();
-          const uName = String(emp.username || '').trim();
-          const fName = String(emp.full_name || '').trim();
-          const ePass = String(emp.password || '').trim();
-
-          return (eCode === inputUser || uName === inputUser || fName === inputUser) && (inputPass === ePass || inputPass === '000');
-        });
-
-        if (matchedDriver) {
+        } else {
           setCurrentUser({
             role: 'driver',
-            id: String(matchedDriver.employee_code),
-            driver: matchedDriver.full_name,
-            name: matchedDriver.full_name,
-            profile: matchedDriver
+            id: String(emp.employee_code || emp.username),
+            driver: emp.full_name,
+            name: emp.full_name,
+            profile: emp
           });
-          setUsername(''); setPassword('');
-          setLoadingDb(false);
-          return;
         }
+        setUsername('');
+        setPassword('');
+      } else {
+        Alert.alert('خطأ في الدخول', 'اسم المستخدم أو كلمة المرور غير صحيحة.');
       }
-
-      // 2. الفحص الاحتياطي من جدول drivers
-      const { data: driversList } = await supabase.from('drivers').select('*');
-      if (driversList && driversList.length > 0) {
-        const matchedDriverTable = driversList.find((d: any) => {
-          const pNo = String(d.plate_number || '').trim();
-          const dPhone = String(d.phone || '').trim();
-          return pNo === inputUser && (inputPass === '000' || inputPass === dPhone);
-        });
-
-        if (matchedDriverTable) {
-          setCurrentUser({
-            role: 'driver',
-            id: matchedDriverTable.plate_number,
-            driver: matchedDriverTable.driver_name,
-            name: matchedDriverTable.driver_name,
-            profile: matchedDriverTable
-          });
-          setUsername(''); setPassword('');
-          setLoadingDb(false);
-          return;
-        }
-      }
-
-      Alert.alert('تعذر تسجيل الدخول', 'تأكد من صحة اسم المستخدم وكلمة المرور.');
     } catch (e: any) {
-      Alert.alert('خطأ في تسجيل الدخول', e?.message || 'تعذر الاتصال بقاعدة البيانات.');
+      Alert.alert('خطأ في الاتصال', e?.message || 'تعذر الاتصال بقاعدة البيانات، تأكد من الإنترنت.');
     } finally {
       setLoadingDb(false);
     }
