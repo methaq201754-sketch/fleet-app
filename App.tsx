@@ -11,11 +11,11 @@ import { createClient } from '@supabase/supabase-js';
 
 // Supabase Integration Setup & Keys
 const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6InFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.58.21';
-const APP_BUILD = '58';
+const APP_VERSION = '1.59.22';
+const APP_BUILD = '59';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -116,7 +116,6 @@ export default function App() {
   const [reqImage, setReqImage] = useState<string | undefined>();
   const [faultType, setFaultType] = useState('');
   const [requiredWork, setRequiredWork] = useState('');
-  const [serviceDescription, setServiceDescription] = useState('');
 
   const [assignmentForm, setAssignmentForm] = useState<Assignment>({
     id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
@@ -232,35 +231,70 @@ export default function App() {
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes,
   };
 
-  // دالة تسجيل الدخول المطابقة تماماً لأسماء الحسابات الإنجليزية وكلمات المرور
+  // دالة تسجيل الدخول المطابقة والمحسنة كلياً للمسؤولين والسائقين
   const handleLogin = async () => {
-    const u = username.trim().toLowerCase(), p = password.trim();
-    if (!u || !p) {
-      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم / رقم الهاتف أو رقم السيارة وكلمة المرور');
+    const inputUser = username.trim();
+    const inputPass = password.trim();
+
+    if (!inputUser || !inputPass) {
+      Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم وكلمة المرور');
       return;
     }
+
     try {
       setLoadingDb(true);
 
-      // 1. البحث في جدول المسؤولين (employees) باستخدام اسم الحساب الإنجليزي أو الاسم العربي أو الكود أو رقم الهاتف
-      const { data: empData } = await supabase
+      // 1. جلب كافة الموظفين من جدول employees ومقارنتهم محلياً بمرونة تامة
+      const { data: empList, error: empError } = await supabase
         .from('employees')
-        .select('*')
-        .or(`username.ilike.${u},full_name.ilike.${u},employee_code.ilike.${u},phone.eq.${u}`);
+        .select('*');
 
-      if (empData && empData.length > 0) {
-        // المطابقة الدقيقة لكلمة المرور (أو رقم الهاتف)
-        const matchedEmp = empData.find((emp: any) => 
-          String(emp.password || '').trim() === p || String(emp.phone || '').trim() === p
-        );
+      if (empList && empList.length > 0) {
+        // البحث عن المسؤولين (super_admin أو manager)
+        const matchedAdmin = empList.find((emp: any) => {
+          const uName = String(emp.username || '').trim();
+          const fName = String(emp.full_name || '').trim();
+          const eCode = String(emp.employee_code || '').trim();
+          const ePass = String(emp.password || '').trim();
+          const eRole = String(emp.role || '').trim();
 
-        if (matchedEmp) {
+          const isUserMatch = (uName === inputUser || fName === inputUser || eCode === inputUser);
+          const isPassMatch = (inputPass === ePass);
+          const isAdminRole = (eRole === 'super_admin' || eRole === 'manager');
+
+          return isUserMatch && isPassMatch && isAdminRole;
+        });
+
+        if (matchedAdmin) {
           setCurrentUser({
             role: 'admin',
-            id: matchedEmp.employee_code || matchedEmp.username,
-            name: matchedEmp.full_name || matchedEmp.username,
-            department: matchedEmp.department,
-            profile: matchedEmp
+            id: matchedAdmin.employee_code || matchedAdmin.username,
+            name: matchedAdmin.full_name || matchedAdmin.username,
+            department: matchedAdmin.department,
+            profile: matchedAdmin
+          });
+          setUsername(''); setPassword('');
+          setLoadingDb(false);
+          return;
+        }
+
+        // البحث عن السائقين أو الموظفين العاديين
+        const matchedDriver = empList.find((emp: any) => {
+          const eCode = String(emp.employee_code || '').trim();
+          const uName = String(emp.username || '').trim();
+          const fName = String(emp.full_name || '').trim();
+          const ePass = String(emp.password || '').trim();
+
+          return (eCode === inputUser || uName === inputUser || fName === inputUser) && (inputPass === ePass || inputPass === '000');
+        });
+
+        if (matchedDriver) {
+          setCurrentUser({
+            role: 'driver',
+            id: String(matchedDriver.employee_code),
+            driver: matchedDriver.full_name,
+            name: matchedDriver.full_name,
+            profile: matchedDriver
           });
           setUsername(''); setPassword('');
           setLoadingDb(false);
@@ -268,47 +302,30 @@ export default function App() {
         }
       }
 
-      // 2. البحث في جدول السائقين (drivers)
-      const { data: driverData } = await supabase
-        .from('drivers')
-        .select('*')
-        .eq('plate_number', u)
-        .maybeSingle();
-
-      if (driverData && (p === '000' || p === String(driverData.phone).trim())) {
-        setCurrentUser({
-          role: 'driver',
-          id: driverData.plate_number,
-          driver: driverData.driver_name,
-          name: driverData.driver_name,
-          profile: driverData
+      // 2. الفحص الاحتياطي من جدول drivers
+      const { data: driversList } = await supabase.from('drivers').select('*');
+      if (driversList && driversList.length > 0) {
+        const matchedDriverTable = driversList.find((d: any) => {
+          const pNo = String(d.plate_number || '').trim();
+          const dPhone = String(d.phone || '').trim();
+          return pNo === inputUser && (inputPass === '000' || inputPass === dPhone);
         });
-        setUsername(''); setPassword('');
-        setLoadingDb(false);
-        return;
+
+        if (matchedDriverTable) {
+          setCurrentUser({
+            role: 'driver',
+            id: matchedDriverTable.plate_number,
+            driver: matchedDriverTable.driver_name,
+            name: matchedDriverTable.driver_name,
+            profile: matchedDriverTable
+          });
+          setUsername(''); setPassword('');
+          setLoadingDb(false);
+          return;
+        }
       }
 
-      // 3. البحث برقم السيارة مباشرة من جدول السيارات
-      const { data: carData } = await supabase
-        .from('vehicles')
-        .select('*')
-        .eq('car_number', u)
-        .maybeSingle();
-
-      if (carData && p === '000') {
-        setCurrentUser({
-          role: 'driver',
-          id: carData.car_number,
-          driver: carData.car_name || `سائق ${carData.car_number}`,
-          name: carData.car_name,
-          profile: carData
-        });
-        setUsername(''); setPassword('');
-        setLoadingDb(false);
-        return;
-      }
-
-      Alert.alert('تعذر تسجيل الدخول', 'تأكد من صحة اسم المستخدم/رقم السيارة وكلمة المرور.');
+      Alert.alert('تعذر تسجيل الدخول', 'تأكد من صحة اسم المستخدم وكلمة المرور.');
     } catch (e: any) {
       Alert.alert('خطأ في تسجيل الدخول', e?.message || 'تعذر الاتصال بقاعدة البيانات.');
     } finally {
@@ -322,7 +339,7 @@ export default function App() {
 
   const resetRequestForm = () => {
     setReqQty(''); setCurrOdometer(''); setReqNotes(''); setReqImage(undefined);
-    setFaultType(''); setRequiredWork(''); setServiceDescription('');
+    setFaultType(''); setRequiredWork('');
     setSelectedWorkshop(workshops[0] || ''); setSelectedEngineer(engineers[0] || '');
     setSelectedClient(clients[0] || ''); setSelectedStation(stations[0] || '');
     setSelectedFuel(fuelTypes[0] || ''); setSelectedOil(oils[0] || '');
@@ -747,9 +764,9 @@ export default function App() {
           <Text style={styles.loginTitle}>نظام إدارة الأسطول</Text>
           <Text style={styles.loginSubtitle}>{loadingDb ? 'جاري الاتصال بالسحابة...' : `جاهز (${fleet.length} سيارة مسجلة سحابياً)`}</Text>
           <Text style={styles.versionText}>الإصدار: {APP_VERSION} (بناء {APP_BUILD})</Text>
-          <TextInput style={styles.input} placeholder="اسم الحساب الإنجليزي (مثل methaq / bader)" placeholderTextColor="#94A3B8"
-            value={username} onChangeText={setUsername} autoCapitalize="none" textAlign="right" />
-          <TextInput style={styles.input} placeholder="كلمة المرور (رقم الهاتف للمسؤولين)" placeholderTextColor="#94A3B8"
+          <TextInput style={styles.input} placeholder="اسم المستخدم (مثال: ميثاق / بادر)" placeholderTextColor="#94A3B8"
+            value={username} onChangeText={setUsername} textAlign="right" />
+          <TextInput style={styles.input} placeholder="كلمة المرور (رقم الهاتف)" placeholderTextColor="#94A3B8"
             secureTextEntry value={password} onChangeText={setPassword} textAlign="right" />
           <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}><Text style={styles.btnText}>تسجيل الدخول</Text></TouchableOpacity>
           <TouchableOpacity style={styles.reloadBtn} onPress={loadSupabaseData}><Text style={styles.reloadText}>🔄 مزامنة البيانات من السحابة</Text></TouchableOpacity>
