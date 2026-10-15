@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.55.19';
-const APP_BUILD = '55';
+const APP_VERSION = '1.56.20';
+const APP_BUILD = '56';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -92,7 +92,6 @@ export default function App() {
   
   const [userTab, setUserTab] = useState('service');
   const [adminTab, setAdminTab] = useState('requests');
-  const [notifications, setNotifications] = useState<{id:string;title:string;body:string;date:string;target:string}[]>([]);
   const [loadingDb, setLoadingDb] = useState(false);
   const [adminRequestTab, setAdminRequestTab] = useState('وقود');
   const [pricingCategoryModal, setPricingCategoryModal] = useState<string | null>(null);
@@ -118,10 +117,6 @@ export default function App() {
   const [faultType, setFaultType] = useState('');
   const [requiredWork, setRequiredWork] = useState('');
   const [serviceDescription, setServiceDescription] = useState('');
-  const [editDriverName, setEditDriverName] = useState('');
-  const [reportFrom, setReportFrom] = useState('');
-  const [reportTo, setReportTo] = useState('');
-  const [reportType, setReportType] = useState('الكل');
 
   const [assignmentForm, setAssignmentForm] = useState<Assignment>({
     id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
@@ -237,9 +232,9 @@ export default function App() {
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes,
   };
 
-  // دالة تسجيل الدخول الشاملة
+  // دالة تسجيل الدخول المطابقة تماماً لأسماء الحسابات الإنجليزية وكلمات المرور
   const handleLogin = async () => {
-    const u = username.trim(), p = password.trim();
+    const u = username.trim().toLowerCase(), p = password.trim();
     if (!u || !p) {
       Alert.alert('تنبيه', 'يرجى إدخال اسم المستخدم / رقم الهاتف أو رقم السيارة وكلمة المرور');
       return;
@@ -247,25 +242,30 @@ export default function App() {
     try {
       setLoadingDb(true);
 
-      // 1. البحث في جدول المسؤولين (employees)
+      // 1. البحث في جدول المسؤولين (employees) باستخدام اسم الحساب الإنجليزي أو الاسم العربي أو الكود أو رقم الهاتف
       const { data: empData } = await supabase
         .from('employees')
         .select('*')
-        .or(`username.eq.${u},full_name.eq.${u},employee_code.eq.${u},phone.eq.${u}`)
-        .eq('password', p)
-        .maybeSingle();
+        .or(`username.ilike.${u},full_name.ilike.${u},employee_code.ilike.${u},phone.eq.${u}`);
 
-      if (empData) {
-        setCurrentUser({
-          role: 'admin',
-          id: empData.employee_code || empData.username,
-          name: empData.full_name || empData.username,
-          department: empData.department,
-          profile: empData
-        });
-        setUsername(''); setPassword('');
-        setLoadingDb(false);
-        return;
+      if (empData && empData.length > 0) {
+        // المطابقة الدقيقة لكلمة المرور (أو رقم الهاتف)
+        const matchedEmp = empData.find((emp: any) => 
+          String(emp.password || '').trim() === p || String(emp.phone || '').trim() === p
+        );
+
+        if (matchedEmp) {
+          setCurrentUser({
+            role: 'admin',
+            id: matchedEmp.employee_code || matchedEmp.username,
+            name: matchedEmp.full_name || matchedEmp.username,
+            department: matchedEmp.department,
+            profile: matchedEmp
+          });
+          setUsername(''); setPassword('');
+          setLoadingDb(false);
+          return;
+        }
       }
 
       // 2. البحث في جدول السائقين (drivers)
@@ -275,7 +275,7 @@ export default function App() {
         .eq('plate_number', u)
         .maybeSingle();
 
-      if (driverData && (p === '000' || p === driverData.phone)) {
+      if (driverData && (p === '000' || p === String(driverData.phone).trim())) {
         setCurrentUser({
           role: 'driver',
           id: driverData.plate_number,
@@ -288,7 +288,7 @@ export default function App() {
         return;
       }
 
-      // 3. البحث برقم السيارة مباشرة
+      // 3. البحث برقم السيارة مباشرة من جدول السيارات
       const { data: carData } = await supabase
         .from('vehicles')
         .select('*')
@@ -747,9 +747,9 @@ export default function App() {
           <Text style={styles.loginTitle}>نظام إدارة الأسطول</Text>
           <Text style={styles.loginSubtitle}>{loadingDb ? 'جاري الاتصال بالسحابة...' : `جاهز (${fleet.length} سيارة مسجلة سحابياً)`}</Text>
           <Text style={styles.versionText}>الإصدار: {APP_VERSION} (بناء {APP_BUILD})</Text>
-          <TextInput style={styles.input} placeholder="رقم السيارة / اسم المستخدم (المسؤول)" placeholderTextColor="#94A3B8"
-            value={username} onChangeText={setUsername} textAlign="right" />
-          <TextInput style={styles.input} placeholder="كلمة المرور (000 للسائقين)" placeholderTextColor="#94A3B8"
+          <TextInput style={styles.input} placeholder="اسم الحساب الإنجليزي (مثل methaq / bader)" placeholderTextColor="#94A3B8"
+            value={username} onChangeText={setUsername} autoCapitalize="none" textAlign="right" />
+          <TextInput style={styles.input} placeholder="كلمة المرور (رقم الهاتف للمسؤولين)" placeholderTextColor="#94A3B8"
             secureTextEntry value={password} onChangeText={setPassword} textAlign="right" />
           <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}><Text style={styles.btnText}>تسجيل الدخول</Text></TouchableOpacity>
           <TouchableOpacity style={styles.reloadBtn} onPress={loadSupabaseData}><Text style={styles.reloadText}>🔄 مزامنة البيانات من السحابة</Text></TouchableOpacity>
