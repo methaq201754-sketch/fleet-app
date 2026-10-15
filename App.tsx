@@ -14,7 +14,7 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.54.17';
+const APP_VERSION = '1.54.18';
 const APP_BUILD = '54';
 
 const COLORS = {
