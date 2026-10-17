@@ -14,8 +14,9 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.64.24';
-const APP_BUILD = '64';
+const APP_VERSION = '1.65.25';
+const APP_BUILD = '65';
+
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -94,15 +95,11 @@ export default function App() {
   
   const [userTab, setUserTab] = useState('service');
   const [adminTab, setAdminTab] = useState('requests');
-  const [notifications, setNotifications] = useState<{id:string;title:string;body:string;date:string;target:string}[]>([]);
   const [loadingDb, setLoadingDb] = useState(false);
   
   const [tripTypes, setTripTypes] = useState<string[]>(['مهمة عمل','توصيل مواد','مراجعة جهة']);
   const [tripDestinations, setTripDestinations] = useState<string[]>(['صنعاء','عدن','الحديدة','إب','ذمار','رداع']);
   
-  const [noticeTitle, setNoticeTitle] = useState('');
-  const [noticeBody, setNoticeBody] = useState('');
-  const [noticeTarget, setNoticeTarget] = useState('الكل');
   const [adminRequestTab, setAdminRequestTab] = useState('وقود');
   const [pricingCategoryModal, setPricingCategoryModal] = useState<string | null>(null);
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
@@ -129,8 +126,6 @@ export default function App() {
   const [requiredWork, setRequiredWork] = useState('');
   const [serviceDescription, setServiceDescription] = useState('');
   const [editDriverName, setEditDriverName] = useState('');
-  const [reportFrom, setReportFrom] = useState('');
-  const [reportTo, setReportTo] = useState('');
   const [reportType, setReportType] = useState('الكل');
   
   const [ownershipTypes, setOwnershipTypes] = useState<string[]>(['شركة','خاصة']);
@@ -147,7 +142,6 @@ export default function App() {
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes, 'نوع المهمة': setTripTypes,
     'الوجهة/المنطقة': setTripDestinations,
   };
-
   const [assignmentForm, setAssignmentForm] = useState<Assignment>({
     id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '',
   });
@@ -209,7 +203,6 @@ export default function App() {
         });
         setFleet(mappedFleet);
       }
-
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
       if (!rError && rData) {
         const mappedReqs: RequestItem[] = (rData || []).map((r: any) => {
@@ -270,8 +263,22 @@ export default function App() {
     }
     try {
       setLoadingDb(true);
-      let email = u.includes('@') ? u : `${u.toLowerCase()}@fleet-login.example.com`;
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password: p });
+      
+      const loginEmails: Record<string, string> = {
+        'ميثاق2': 'methaq2@fleet-login.example.com',
+        'عبدالله2': 'abdullah2@fleet-login.example.com',
+        'بادر2': 'bader2@fleet-login.example.com',
+        'سعيد2': 'saeed2@fleet-login.example.com',
+      };
+
+      const email = u.includes('@')
+        ? u.toLowerCase()
+        : loginEmails[u] || `${u.toLowerCase()}@fleet-login.example.com`;
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: p,
+      });
       
       if (error || !data.user) {
         Alert.alert('تعذر تسجيل الدخول', 'تأكد من صحة بيانات الدخول أو كلمة المرور.');
@@ -281,13 +288,12 @@ export default function App() {
       const { data: profile, error: profileError } = await supabase
         .from('profiles').select('id, username, full_name, role, phone, is_active, must_change_password')
         .eq('id', data.user.id).maybeSingle();
-
+      
       if (profileError || !profile) {
         await supabase.auth.signOut();
         Alert.alert('الحساب غير مربوط', 'تم تسجيل الدخول، لكن لم يوجد سجل مطابق في جدول profiles.');
         return;
       }
-
       if (profile.is_active === false) {
         await supabase.auth.signOut();
         Alert.alert('الحساب موقوف', 'هذا الحساب غير مفعّل. راجع مسؤول النظام.');
@@ -296,7 +302,7 @@ export default function App() {
 
       const roleRaw = String(profile.role || '').toLowerCase();
       const isAdmin = ['admin', 'administrator', 'manager', 'services_manager', 'direct_manager', 'مسؤول', 'مدير', 'مدير عام', 'مدير الخدمات', 'مسؤول الخدمات'].includes(roleRaw);
-
+      
       if (isAdmin) {
         setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: data.user.id, username: profile.username, name: profile.full_name || profile.username, profile });
       } else {
@@ -396,7 +402,6 @@ export default function App() {
       status: 'تحت المراجعة', workflow: 'المسؤول المباشر',
       notes: reqNotes, imageUri: reqImage, approvalTrail: ['أرسل السائق الطلب'],
     };
-
     if (serviceTypeModal === 'وقود') {
       const qty = Number(reqQty);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
@@ -426,7 +431,6 @@ export default function App() {
       if (!selectedClient || !serviceDescription.trim()) { Alert.alert('تنبيه', 'اختر العميل واكتب الخدمة المطلوبة.'); return; }
       item.qty = 1; item.total = 0; item.client = selectedClient; item.serviceDescription = serviceDescription;
     }
-
     try {
       const { data, error } = await supabase.from('requests').insert({
         vehicle_id: item.vehicleId, applicant_id: currentUser.authId,
@@ -436,12 +440,10 @@ export default function App() {
         notes: makeStoredNotes(item), image_url: null, status: 'تحت المراجعة',
         direct_manager_status: 'تحت المراجعة', services_status: 'تحت المراجعة'
       }).select();
-
       if (error) throw error;
       if (data && data.length > 0) {
         item.id = String(data[0].id);
       }
-
       setRequests(prev => [item, ...prev]);
       setServiceTypeModal(null); resetRequestForm(); setUserTab('my_requests');
       Alert.alert('تم إرسال الطلب', 'تم حفظ الطلب في قاعدة البيانات بنجاح.');
@@ -666,7 +668,6 @@ export default function App() {
       if (fleetCategory === 'سيارات الشركة') return ownership === 'شركة';
       return true;
     });
-
     const openAddVehicle = () => {
       setVehicleEditId(null);
       setVehicleForm({
@@ -675,13 +676,11 @@ export default function App() {
       });
       setVehicleModalVisible(true);
     };
-
     const openEditVehicle = (v: Vehicle) => {
       setVehicleEditId(v.id);
       setVehicleForm({ ...v, carNumber: v.carNumber, ownership: v.ownership || 'شركة' });
       setVehicleModalVisible(true);
     };
-
     const saveVehicle = async () => {
       if (!vehicleForm.carNumber.trim() || !vehicleForm.name.trim() || !vehicleForm.type.trim()) {
         Alert.alert('تنبيه', 'رقم السيارة واسم السيارة والنوع حقول مطلوبة.'); return;
@@ -702,7 +701,6 @@ export default function App() {
         loadSupabaseData();
       } catch (e: any) { Alert.alert('تعذر حفظ السيارة', e?.message || 'تحقق من صلاحيات جدول vehicles.'); }
     };
-
     return (
       <View>
         <View style={styles.pageHeaderRow}>
