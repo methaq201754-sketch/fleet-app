@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.61.23';
-const APP_BUILD = '61';
+const APP_VERSION = '1.64.24';
+const APP_BUILD = '64';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -185,11 +185,13 @@ export default function App() {
     }
   });
 
+  // دالة لجلب البيانات من قاعدة البيانات (تم جعلها تعمل فور فتح التطبيق)
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
-      const { data: vData, error: vError } = await supabase.from('vehicles').select('*').order('car_number');
+      const { data: vData, error: vError } = await supabase.from('vehicles').select('*');
       if (vError) throw vError;
+      
       const mappedFleet: Vehicle[] = (vData || []).map((v: any) => {
         const carNo = String(v.car_number || '').trim();
         return {
@@ -210,42 +212,43 @@ export default function App() {
       setFleet(mappedFleet);
 
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
-      if (rError) throw rError;
-      const mappedReqs: RequestItem[] = (rData || []).map((r: any) => {
-        const stored = parseStoredNotes(r.notes);
-        const extra = stored.appFields || {};
-        const stage = r.status === 'مرفوض' ? 'تم رفض الطلب'
-          : r.status === 'تمت الموافقة' ? 'تمت الموافقة'
-          : (r.direct_manager_status === 'موافق')
-            ? ((r.services_status === 'موافق') ? 'المسؤول' : 'الخدمات الإدارية')
-            : 'المسؤول المباشر';
-        return {
-          id: String(r.id), vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
-          type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
-          qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
-          notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
-          currOdo: r.odometer == null ? undefined : Number(r.odometer), workflow: stage,
-          imageUri: extra.imageUri, fuelType: extra.fuelType, oilType: extra.oilType,
-          itemName: extra.itemName, prevOdo: extra.prevOdo, distance: extra.distance,
-          workshop: extra.workshop, engineer: extra.engineer, faultType: extra.faultType,
-          requiredWork: extra.requiredWork, client: extra.client, serviceDescription: extra.serviceDescription,
-          approvalTrail: extra.approvalTrail || [], destination: extra.destination,
-          startDate: extra.startDate, endDate: extra.endDate, returnDate: extra.returnDate,
-          daysCount: extra.daysCount, custody: extra.custody
-        };
-      });
-      setRequests(mappedReqs);
+      if (!rError && rData) {
+        const mappedReqs: RequestItem[] = (rData || []).map((r: any) => {
+          const stored = parseStoredNotes(r.notes);
+          const extra = stored.appFields || {};
+          const stage = r.status === 'مرفوض' ? 'تم رفض الطلب'
+            : r.status === 'تمت الموافقة' ? 'تمت الموافقة'
+            : (r.direct_manager_status === 'موافق')
+              ? ((r.services_status === 'موافق') ? 'المسؤول' : 'الخدمات الإدارية')
+              : 'المسؤول المباشر';
+          return {
+            id: String(r.id), vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
+            type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
+            qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
+            notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
+            currOdo: r.odometer == null ? undefined : Number(r.odometer), workflow: stage,
+            imageUri: extra.imageUri, fuelType: extra.fuelType, oilType: extra.oilType,
+            itemName: extra.itemName, prevOdo: extra.prevOdo, distance: extra.distance,
+            workshop: extra.workshop, engineer: extra.engineer, faultType: extra.faultType,
+            requiredWork: extra.requiredWork, client: extra.client, serviceDescription: extra.serviceDescription,
+            approvalTrail: extra.approvalTrail || [], destination: extra.destination,
+            startDate: extra.startDate, endDate: extra.endDate, returnDate: extra.returnDate,
+            daysCount: extra.daysCount, custody: extra.custody
+          };
+        });
+        setRequests(mappedReqs);
+      }
     } catch (e: any) {
       console.log('Supabase Fetch Error:', e?.message || e);
-      Alert.alert('تعذر المزامنة', `لم يتم تحميل البيانات من Supabase.\n${e?.message || 'تحقق من الاتصال والصلاحيات.'}`);
     } finally {
       setLoadingDb(false);
     }
   };
 
+  // جلب البيانات فور فتح التطبيق لتظهر السيارات في شاشة تسجيل الدخول
   useEffect(() => {
-    if (currentUser?.authId) loadSupabaseData();
-  }, [currentUser?.authId]);
+    loadSupabaseData();
+  }, []);
 
   const getPermission = (vehicleId: string): PermissionSet =>
     permissions[vehicleId] || DEFAULT_PERMISSIONS;
@@ -799,7 +802,7 @@ export default function App() {
               <Text style={styles.btnText}>إغلاق</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </Modal>
       </Modal>
     </View>
   );
@@ -887,6 +890,7 @@ export default function App() {
           <TextInput style={styles.input} placeholder="كلمة المرور" placeholderTextColor="#94A3B8"
             secureTextEntry value={password} onChangeText={setPassword} textAlign="right" />
           <TouchableOpacity style={styles.primaryBtn} onPress={handleLogin}><Text style={styles.btnText}>تسجيل الدخول</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.reloadBtn} onPress={loadSupabaseData}><Text style={styles.reloadText}>🔄 إعادة تحميل السيارات</Text></TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -1022,7 +1026,7 @@ const styles = StyleSheet.create({
   modalCenter:{padding:16,justifyContent:'center'},
   modalContent:{backgroundColor:'#fff',borderRadius:20,padding:18,maxHeight:'92%'},
   modalTitle:{textAlign:'right',fontSize:20,fontWeight:'900',color:COLORS.text,marginBottom:12},
-  infoPill:{flexDirection:'row-reverse',justifyContent:'space-between',backgroundColor:'#F8FAFC',borderRadius:10,padding:10,marginBottom:8},
+  infoPill:{flexDirection:'row-reverse',joinContent:'space-between',backgroundColor:'#F8FAFC',borderRadius:10,padding:10,marginBottom:8},
   infoPillText:{color:COLORS.muted,fontSize:12,fontWeight:'700'},
   totalText:{color:COLORS.primary,fontSize:18,fontWeight:'900',textAlign:'right',marginVertical:8},
   previewImage:{width:110,height:110,borderRadius:12,alignSelf:'flex-end',marginVertical:8},
@@ -1053,4 +1057,6 @@ const styles = StyleSheet.create({
   requestFormContent:{padding:16,paddingBottom:30},
   requestFooter:{backgroundColor:'#fff',padding:10,borderTopWidth:1,borderTopColor:COLORS.border,flexDirection:'row-reverse'},
   readOnlyInput:{backgroundColor:'#E2E8F0',borderWidth:1,borderColor:COLORS.border,borderRadius:12,paddingHorizontal:14,paddingVertical:12,fontSize:15,color:COLORS.text,marginBottom:10},
+  reloadBtn:{marginTop:10,alignItems:'center'},
+  reloadText:{color:'#2563EB',fontSize:13,fontWeight:'800'}
 });
