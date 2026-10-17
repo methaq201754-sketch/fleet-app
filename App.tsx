@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.65.25';
-const APP_BUILD = '65';
+const APP_VERSION = '1.66.26';
+const APP_BUILD = '66';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -93,6 +93,12 @@ export default function App() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionSet>>({});
   
+  // States الجديدة للمسؤولين المباشرين للسيارات
+  const [vehicleManagerRows, setVehicleManagerRows] = useState<any[]>([]);
+  const [vehicleManagerOptions, setVehicleManagerOptions] = useState<any[]>([]);
+  const [selectedVehicleManagers, setSelectedVehicleManagers] = useState<Record<string, string>>({});
+  const [vehicleManagerLoading, setVehicleManagerLoading] = useState(false);
+
   const [userTab, setUserTab] = useState('service');
   const [adminTab, setAdminTab] = useState('requests');
   const [loadingDb, setLoadingDb] = useState(false);
@@ -240,6 +246,103 @@ export default function App() {
   useEffect(() => {
     loadSupabaseData();
   }, []);
+
+  // دوال إدارة المسؤولين المباشرين للسيارات المضافة حديثاً
+  const loadVehicleManagers = async () => {
+    setVehicleManagerLoading(true);
+    try {
+      const [vehiclesResult, profilesResult, assignmentsResult] = await Promise.all([
+        supabase.from('vehicles').select('id, car_number, car_name').order('car_number'),
+        supabase.from('profiles').select('id, username, full_name, role').eq('is_active', true).in('role', ['manager', 'direct_manager', 'admin']),
+        supabase.from('vehicle_managers').select('vehicle_id, manager_id')
+      ]);
+
+      if (vehiclesResult.error) throw vehiclesResult.error;
+      if (profilesResult.error) throw profilesResult.error;
+      if (assignmentsResult.error) throw assignmentsResult.error;
+
+      setVehicleManagerRows(vehiclesResult.data || []);
+      setVehicleManagerOptions(profilesResult.data || []);
+
+      const assigned: Record<string, string> = {};
+      (assignmentsResult.data || []).forEach((item: any) => {
+        assigned[String(item.vehicle_id)] = item.manager_id;
+      });
+      setSelectedVehicleManagers(assigned);
+    } catch (error: any) {
+      Alert.alert('خطأ في التحميل', error?.message || 'تعذر تحميل السيارات والمسؤولين');
+    } finally {
+      setVehicleManagerLoading(false);
+    }
+  };
+
+  const saveVehicleManager = async (vehicleId: number, managerId: string) => {
+    if (!managerId) {
+      Alert.alert('تنبيه', 'اختر المسؤول المباشر أولاً');
+      return;
+    }
+    try {
+      const { error } = await supabase.rpc('assign_vehicle_manager', {
+        p_vehicle_id: vehicleId,
+        p_manager_id: managerId
+      });
+      if (error) throw error;
+      Alert.alert('تم الحفظ', 'تم تعيين المسؤول المباشر للسيارة بنجاح');
+      await loadVehicleManagers();
+    } catch (error: any) {
+      Alert.alert('تعذر الحفظ', error?.message || 'حدث خطأ أثناء حفظ التعيين');
+    }
+  };
+
+  const renderVehicleManagers = () => (
+    <View>
+      <Text style={styles.sectionTitle}>تعيين المسؤول المباشر لكل سيارة</Text>
+      <TouchableOpacity style={styles.primaryBtn} onPress={loadVehicleManagers} disabled={vehicleManagerLoading}>
+        <Text style={styles.btnText}>
+          {vehicleManagerLoading ? 'جارٍ التحميل...' : 'تحديث السيارات والمسؤولين'}
+        </Text>
+      </TouchableOpacity>
+
+      {vehicleManagerRows.map((vehicle: any) => {
+        const vehicleKey = String(vehicle.id);
+        const selectedManagerId = selectedVehicleManagers[vehicleKey] || '';
+        return (
+          <View key={vehicleKey} style={{backgroundColor:'#FFFFFF', borderWidth:1, borderColor:'#D9E0E8', borderRadius:12, padding:14, marginBottom:12}}>
+            <Text style={{textAlign:'right', fontSize:17, fontWeight:'bold'}}>السيارة رقم: {vehicle.car_number}</Text>
+            {!!vehicle.car_name && (<Text style={{textAlign:'right', marginTop:4}}>{vehicle.car_name}</Text>)}
+            <Text style={{textAlign:'right', marginTop:12, marginBottom:8}}>اختر المسؤول المباشر:</Text>
+            
+            {vehicleManagerOptions.map((manager: any) => {
+              const isSelected = selectedManagerId === manager.id;
+              return (
+                <TouchableOpacity
+                  key={manager.id}
+                  onPress={() => setSelectedVehicleManagers(prev => ({ ...prev, [vehicleKey]: manager.id }))}
+                  style={{
+                    padding: 10, marginBottom: 6, borderRadius: 8, borderWidth: 1,
+                    borderColor: isSelected ? '#C0272D' : '#D9E0E8',
+                    backgroundColor: isSelected ? '#FCEBEC' : '#FFFFFF'
+                  }}
+                >
+                  <Text style={{textAlign:'right', color:'#222222'}}>
+                    {isSelected ? '✓ ' : ''}{manager.full_name || manager.username}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+
+            <TouchableOpacity style={[styles.primaryBtn, {marginTop:10}]} onPress={() => saveVehicleManager(Number(vehicle.id), selectedManagerId)}>
+              <Text style={styles.btnText}>حفظ مسؤول السيارة</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+
+      {!vehicleManagerLoading && vehicleManagerRows.length === 0 && (
+        <Text style={{textAlign:'center', marginTop:20}}>لا توجد سيارات محمّلة. اضغط تحديث السيارات والمسؤولين.</Text>
+      )}
+    </View>
+  );
 
   const getPermission = (vehicleId: string): PermissionSet =>
     permissions[vehicleId] || DEFAULT_PERMISSIONS;
@@ -902,8 +1005,9 @@ export default function App() {
   if (currentUser.role === 'admin' || currentUser.role === 'manager') {
     const adminNav = [
       ['requests','📋','الطلبات'], ['coding','🧩','التكويدات'], ['pricing','💰','الأسعار'],
-      ['fleet','🚗','السيارات'], ['assignments','🔗','الربط'],
+      ['fleet','🚗','Rالسيارات'], ['assignments','🔗','الربط'],
       ['permissions','🔐','الصلاحيات'], ['reports','📊','التقارير'],
+      ['vehicleManagers', '👥', 'مسؤولو السيارات'], // التبويب المضاف للقائمة
     ];
     return (
       <SafeAreaView style={styles.container}>
@@ -913,7 +1017,12 @@ export default function App() {
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.adminNav} contentContainerStyle={{flexDirection:'row-reverse'}}>
           {adminNav.map(([key,icon,label]) => (
-            <TouchableOpacity key={key} onPress={() => setAdminTab(key)}
+            <TouchableOpacity key={key} onPress={() => {
+              setAdminTab(key);
+              if (key === 'vehicleManagers') {
+                loadVehicleManagers();
+              }
+            }}
               style={[styles.adminTab, adminTab === key && styles.adminTabActive]}>
               <Text style={styles.adminIcon}>{icon}</Text>
               <Text style={[styles.adminTabText, adminTab === key && styles.adminTabTextActive]}>{label}</Text>
@@ -928,6 +1037,7 @@ export default function App() {
           {adminTab === 'assignments' ? renderAssignments() : null}
           {adminTab === 'permissions' ? renderPermissions() : null}
           {adminTab === 'reports' ? renderReports(true) : null}
+          {adminTab === 'vehicleManagers' && currentUser.username === 'ميثاق2' ? renderVehicleManagers() : null}
         </ScrollView>
         <TouchableOpacity style={styles.logoutBar} onPress={handleLogout}><Text style={styles.btnText}>تسجيل الخروج</Text></TouchableOpacity>
         <Modal visible={!!codingModal} transparent animationType="slide" onRequestClose={() => setCodingModal(null)}>
