@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.68.28';
-const APP_BUILD = '68';
+const APP_VERSION = '1.69.29';
+const APP_BUILD = '69';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -137,6 +137,10 @@ export default function App() {
   const [editDriverName, setEditDriverName] = useState('');
   const [reportType, setReportType] = useState('الكل');
   
+  // خطافات إضافية تم نقلها للمستوى الأعلى لتجنب اختلاف عدد الخطافات عند إعادة الرسم
+  const [subView, setSubView] = useState<'report' | 'create'>('report');
+  const [darkMode, setDarkMode] = useState(false);
+  
   const [ownershipTypes, setOwnershipTypes] = useState<string[]>(['شركة','خاصة']);
   const codingMap: Record<string, string[]> = {
     'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
@@ -243,7 +247,6 @@ export default function App() {
         setRequests(mappedReqs);
       }
 
-      // جلب بيانات الحسابات للمسؤولين
       const { data: pData } = await supabase.from('profiles').select('*');
       if (pData) setManagerProfiles(pData);
 
@@ -728,7 +731,6 @@ export default function App() {
     );
   };
 
-  // شاشة مسؤولي الطلبات (الأدمن - ميثاق) المطلوبة بدلاً من مسؤولي السيارات
   const renderRequestManagersAdmin = () => {
     return (
       <View>
@@ -967,10 +969,7 @@ export default function App() {
     </View>
   );
 
-  // شاشة الطلبات والتقارير المحدثة للمستخدم العادي (تطابق نمط الصورة المرفقة)
   const renderMyRequestsAndReports = () => {
-    const [subView, setSubView] = useState<'report' | 'create'>('report');
-    // خصوصية وعرض الطلبات: إخفاء الطلبات تماماً عن بقية المستخدمين إلا إذا كان صاحبها أو المسؤول المخول
     const myRows = requests.filter(r => r.vehicleId === currentUser?.id || r.applicantId === currentUser?.authId);
 
     return (
@@ -1060,18 +1059,14 @@ export default function App() {
     );
   };
 
-  // شاشة الإعدادات للمستخدم العادي (تطابق تصميم الصورة المرفقة 100%)
   const renderUserSettings = () => {
-    const [darkMode, setDarkMode] = useState(false);
     return (
       <View style={{backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden'}}>
-        {/* رأس البطاقة باللون الأحمر وصورة الموظف */}
         <View style={{backgroundColor: COLORS.primary, padding: 25, alignItems: 'center'}}>
           <Image source={{uri: currentUser?.profile?.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}} style={{width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#fff', marginBottom: 10}} />
           <Text style={{color: '#fff', fontSize: 18, fontWeight: '900'}}>{currentUser?.name || currentUser?.username || 'ميثاق عبده علي مقبل'}</Text>
         </View>
 
-        {/* عناصر القائمة تماماً كالصورة المرفقة */}
         {[
           {title: 'الوضع الداكن', icon: '🌙', isSwitch: true},
           {title: 'بيانات الموظف', icon: '👤', action: () => Alert.alert('بيانات الموظف', `الاسم: ${currentUser?.name}\nالمستخدم: ${currentUser?.username}\nالدور: ${currentUser?.role}`)},
@@ -1152,7 +1147,6 @@ export default function App() {
       ['assignments', '🔗', 'الربط'],
       ['permissions', '🔐', 'الصلاحيات'],
       ['reports', '📊', 'التقارير'],
-      // تغيير التبويب ليصبح "مسؤولي الطلبات"
       ...(currentUser.username === 'ميثاق2'
         ? [['requestManagers', '👥', 'مسؤولي الطلبات']]
         : []),
@@ -1208,7 +1202,6 @@ export default function App() {
     );
   }
 
-  // حساب المستخدم العادي
   const isManagerOrAdminUser = currentUser?.role === 'manager' || currentUser?.role === 'admin' || currentUser?.role === 'direct_manager' || currentUser?.role === 'services_manager';
 
   return (
@@ -1226,10 +1219,9 @@ export default function App() {
       <View style={styles.driverNav}>
         {[
           ['service','🏠','الرئيسية'],
-          // إضافة أيقونة "طلبات السائقين" تظهر للمسؤولين فقط
           ...(isManagerOrAdminUser ? [['driver_requests', '📋', 'طلبات السائقين']] : []),
           ['reports','📊','التقارير'],
-          ['settings','⚙️','الإعدادات'] // تغيير المسمى إلى الإعدادات حسب الطلب والصورة
+          ['settings','⚙️','الإعدادات']
         ].map(([key,icon,label]) => (
           <TouchableOpacity key={key} style={styles.driverNavItem} onPress={() => setUserTab(key)}>
             <Text style={{fontSize:18}}>{icon}</Text>
@@ -1306,7 +1298,7 @@ const styles = StyleSheet.create({
   modalTitle:{textAlign:'right',fontSize:20,fontWeight:'900',color:COLORS.text,marginBottom:12},
   infoPill:{flexDirection:'row-reverse',justifyContent:'space-between',backgroundColor:'#F8FAFC',borderRadius:10,padding:10,marginBottom:8},
   infoPillText:{color:COLORS.muted,fontSize:12,fontWeight:'700'},
-  totalText:{color:COLORS.primary,fontSize:18,fontWeight:'900',textAlign:'right',marginVertical:8},
+  textText:{color:COLORS.primary,fontSize:18,fontWeight:'900',textAlign:'right',marginVertical:8},
   previewImage:{width:110,height:110,borderRadius:12,alignSelf:'flex-end',marginVertical:8},
   serviceCard:{backgroundColor:'#fff',borderRadius:18,padding:14,marginBottom:10,flexDirection:'row-reverse',alignItems:'center',gap:12,borderWidth:1,borderColor:'#EEF2F7',elevation:1},
   serviceIcon:{width:55,height:55,borderRadius:17,backgroundColor:'#FFF1F1',alignItems:'center',justifyContent:'center'},
@@ -1326,10 +1318,10 @@ const styles = StyleSheet.create({
   requestTabText:{color:COLORS.muted,fontWeight:'700',fontSize:12},
   requestTabTextActive:{color:COLORS.primary,fontWeight:'900'},
   emptyCard:{backgroundColor:'#fff',borderRadius:16,padding:22,alignItems:'center',marginBottom:12},
-  emptyText:{color:COLORS.muted,fontWeight:'700',textAlign:'center'},
+  emptyText:{color:COLORS.muted,fontWeight:'700',textAlign: 'center'},
   requestImage:{width:170,height:170,borderRadius:14,alignSelf:'flex-end',marginTop:10},
   requestModalScreen:{flex:1,backgroundColor:COLORS.bg},
-  requestModalHeader:{backgroundColor:'#fff',paddingHorizontal:16,paddingVertical:12,flexDirection:'row-reverse',alignItems:'center',justifyContent: 'space-between',borderBottomWidth:1,borderBottomColor:COLORS.border},
+  requestModalHeader:{backgroundColor:'#fff',paddingHorizontal:16,paddingVertical:12,flexDirection:'row-reverse',alignItems:'center',justifyContent:'space-between',borderBottomWidth:1,borderBottomColor:COLORS.border},
   closeText:{color:COLORS.primary,fontWeight:'900',fontSize:14},
   requestFormScroll:{flex:1},
   requestFormContent:{padding:16,paddingBottom:30},
