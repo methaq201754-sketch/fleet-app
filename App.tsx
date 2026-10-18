@@ -14,8 +14,8 @@ const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-const APP_VERSION = '1.66.26';
-const APP_BUILD = '66';
+const APP_VERSION = '1.67.27';
+const APP_BUILD = '67';
 
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
@@ -38,6 +38,8 @@ type RequestItem = {
   client?: string; serviceDescription?: string; workflow?: string; approvalTrail?: string[];
   startDate?: string; endDate?: string; returnDate?: string; daysCount?: number;
   destination?: string; custody?: number;
+  directManagerStatus?: string;
+  servicesStatus?: string;
 };
 
 type PermissionSet = {
@@ -93,7 +95,6 @@ export default function App() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionSet>>({});
   
-  // States الجديدة للمسؤولين المباشرين للسيارات
   const [vehicleManagerRows, setVehicleManagerRows] = useState<any[]>([]);
   const [vehicleManagerOptions, setVehicleManagerOptions] = useState<any[]>([]);
   const [selectedVehicleManagers, setSelectedVehicleManagers] = useState<Record<string, string>>({});
@@ -199,9 +200,9 @@ export default function App() {
             driver: v.driver || '',
             status: v.status || 'في الخدمة',
             type: v.brand || 'سيارة',
-            model: String(v.manufacturing_year || v.model || ''),
+            model: String(v.model || v.manufacturing_year || ''),
             payload: v.load_capacity || '',
-            fuelType: 'ديزل',
+            fuelType: v.fuel_type || 'ديزل',
             engineNo: v.engine_number || '',
             chassisNo: v.chassis_number || '',
             ownership: v.ownership === 'خاصة' ? 'خاصة' : 'شركة'
@@ -231,7 +232,9 @@ export default function App() {
             requiredWork: extra.requiredWork, client: extra.client, serviceDescription: extra.serviceDescription,
             approvalTrail: extra.approvalTrail || [], destination: extra.destination,
             startDate: extra.startDate, endDate: extra.endDate, returnDate: extra.returnDate,
-            daysCount: extra.daysCount, custody: extra.custody
+            daysCount: extra.daysCount, custody: extra.custody,
+            directManagerStatus: r.direct_manager_status || 'تحت المراجعة',
+            servicesStatus: r.services_status || 'تحت المراجعة',
           };
         });
         setRequests(mappedReqs);
@@ -247,7 +250,6 @@ export default function App() {
     loadSupabaseData();
   }, []);
 
-  // دوال إدارة المسؤولين المباشرين للسيارات المضافة حديثاً
   const loadVehicleManagers = async () => {
     setVehicleManagerLoading(true);
     try {
@@ -419,9 +421,9 @@ export default function App() {
           driver: profile.full_name || '', 
           status: 'في الخدمة', 
           type: vehicle?.brand || 'سيارة',
-          model: String(vehicle?.manufacturing_year || vehicle?.model || ''), 
+          model: String(vehicle?.model || vehicle?.manufacturing_year || ''), 
           payload: vehicle?.load_capacity || '',
-          fuelType: 'ديزل', 
+          fuelType: vehicle?.fuel_type || 'ديزل', 
           engineNo: vehicle?.engine_number || '', 
           chassisNo: vehicle?.chassis_number || '', 
           ownership: 'شركة'
@@ -557,13 +559,38 @@ export default function App() {
   };
 
   const advanceRequest = async (id: string) => {
+    const requestId = Number(id);
+
+    if (!Number.isSafeInteger(requestId) || requestId <= 0) {
+      Alert.alert('خطأ', 'رقم الطلب غير صالح.');
+      return;
+    }
+
     try {
-      const { error } = await supabase.rpc('approve_request', { p_id: id, p_note: 'تمت الموافقة عبر التطبيق' });
+      setLoadingDb(true);
+
+      const { error } = await supabase.rpc('approve_request', {
+        p_id: requestId,
+        p_note: 'تمت الموافقة عبر التطبيق',
+      });
+
       if (error) throw error;
-      Alert.alert('تم التحديث', 'تمت الموافقة على الطلب بنجاح.');
-      loadSupabaseData();
+
+      await loadSupabaseData();
+
+      Alert.alert(
+        'تم التحديث',
+        currentUser?.username === 'ميثاق2'
+          ? 'تم اعتماد الطلب نهائيًا.'
+          : 'تمت الموافقة على الطلب في المرحلة الأولى.'
+      );
     } catch (e: any) {
-      Alert.alert('تعذر اعتماد الطلب', e?.message || 'تأكد من صلاحيات مرحلة الاعتماد الخاصة بك.');
+      Alert.alert(
+        'تعذر اعتماد الطلب',
+        e?.message || 'تحقق من تعيين السيارة وصلاحيات مرحلة الاعتماد.'
+      );
+    } finally {
+      setLoadingDb(false);
     }
   };
 
@@ -723,7 +750,35 @@ export default function App() {
 
   const renderRequestsAdmin = () => {
     const requestTabs: Array<[string,string]> = [['محروقات','وقود'],['زيوت','زيوت'],['قطع غيار','قطع غيار'],['صيانة','صيانة'],['إطارات','إطارات'],['بطاريات','بطاريات'],['إرسالية صيانة','إرسالية صيانة'],['إرسالية بنشر وخدمات','إرسالية بنشر وخدمات']];
-    const rows = requests.filter(r => r.type === adminRequestTab);
+    
+    const rows = requests.filter(r => {
+      if (r.type !== adminRequestTab) return false;
+
+      const isFinalApprover = currentUser?.username === 'ميثاق2';
+
+      if (isFinalApprover) {
+        return (
+          r.directManagerStatus === 'موافق' &&
+          r.servicesStatus !== 'موافق' &&
+          r.servicesStatus !== 'مرفوض' &&
+          r.status !== 'مرفوض' &&
+          r.status !== 'تمت الموافقة'
+        );
+      }
+
+      const isPendingDirectApproval =
+        !r.directManagerStatus ||
+        r.directManagerStatus === 'تحت المراجعة' ||
+        r.directManagerStatus === 'بانتظار المراجعة' ||
+        r.directManagerStatus === 'قيد المراجعة';
+
+      return (
+        isPendingDirectApproval &&
+        r.status !== 'مرفوض' &&
+        r.status !== 'تمت الموافقة'
+      );
+    });
+
     return (
       <View>
         <Text style={styles.sectionTitle}>طلبات الخدمات والاعتمادات</Text>
@@ -1004,11 +1059,18 @@ export default function App() {
 
   if (currentUser.role === 'admin' || currentUser.role === 'manager') {
     const adminNav = [
-      ['requests','📋','الطلبات'], ['coding','🧩','التكويدات'], ['pricing','💰','الأسعار'],
-      ['fleet','🚗','Rالسيارات'], ['assignments','🔗','الربط'],
-      ['permissions','🔐','الصلاحيات'], ['reports','📊','التقارير'],
-      ['vehicleManagers', '👥', 'مسؤولو السيارات'], // التبويب المضاف للقائمة
+      ['requests', '📋', 'الطلبات'],
+      ['coding', '🧩', 'التكويدات'],
+      ['pricing', '💰', 'الأسعار'],
+      ['fleet', '🚗', 'السيارات'],
+      ['assignments', '🔗', 'الربط'],
+      ['permissions', '🔐', 'الصلاحيات'],
+      ['reports', '📊', 'التقارير'],
+      ...(currentUser.username === 'ميثاق2'
+        ? [['vehicleManagers', '👥', 'مسؤولو السيارات']]
+        : []),
     ];
+
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
