@@ -2,7 +2,7 @@
   "expo": {
     "name": "إدارة السيارات",
     "slug": "fleet-management-app",
-    "version": "1.67.27",
+    "version": "1.68.28",
     "orientation": "portrait",
     "icon": "./icon.png",
     "userInterfaceStyle": "light",
@@ -12,11 +12,11 @@
     },
     "ios": {
       "supportsTablet": true,
-      "buildNumber": "67"
+      "buildNumber": "68"
     },
     "android": {
       "package": "com.fleet.management",
-      "versionCode": 67
+      "versionCode": 68
     }
   }
 }
