@@ -102,7 +102,7 @@ export default function App() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [permissions, setPermissions] = useState<Record<string, PermissionSet>>({});
   
-  const [requestManagersTab, setRequestManagersTab] = useState('list');
+  const [requestManagersTab, setRequestManagersTab] = useState('distribute');
   const [managerProfiles, setManagerProfiles] = useState<any[]>([]);
   const [workflowRoutes, setWorkflowRoutes] = useState<string[]>(['المسؤول المباشر', 'الخدمات الإدارية', 'المسؤول النهائي']);
   const [newRouteName, setNewRouteName] = useState('');
@@ -110,7 +110,6 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('requests');
   const [loadingDb, setLoadingDb] = useState(false);
   
-  // States المطلوبة لتعيين المسؤولين
   const [availableManagers, setAvailableManagers] = useState<any[]>([]);
   const [savingManager, setSavingManager] = useState(false);
   const [managerAssignModal, setManagerAssignModal] = useState(false);
@@ -446,21 +445,25 @@ export default function App() {
     }
   };
 
-  const { data: { user }, error: authError } =
-  await supabase.auth.getUser();
+  // دالة إرسال الطلب المحدثة بالجزء المطلوب
+  const submitRequest = async () => {
+    if (!currentUser || !serviceTypeModal) return;
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-if (authError || !user) {
-  Alert.alert(
-    'خطأ في جلسة الدخول',
-    authError?.message || 'لا توجد جلسة دخول موثقة.'
-  );
-  return;
-}
+    if (authError || !user) {
+      Alert.alert(
+        'خطأ في جلسة الدخول',
+        authError?.message || 'لا توجد جلسة دخول موثقة.'
+      );
+      return;
+    }
 
-Alert.alert(
-  'اختبار هوية المستخدم',
-  `معرّف Auth:\n${user.id}\n\nالبريد:\n${user.email || 'غير متوفر'}`
-);
+    Alert.alert(
+      'اختبار هوية المستخدم',
+      `معرّف Auth:\n${user.id}\n\nالبريد:\n${user.email || 'غير متوفر'}`
+    );
+    
     const tempId = `REQ-${Date.now().toString().slice(-6)}`;
     const item: RequestItem = {
       id: tempId, vehicleId: currentUser.id, driver: currentUser.driver || currentUser.name || '',
@@ -502,7 +505,7 @@ Alert.alert(
 
     try {
       const { data, error } = await supabase.from('requests').insert({
-        vehicle_id: item.vehicleId, applicant_id: currentUser.authId,
+        vehicle_id: item.vehicleId, applicant_id: user.id,
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
         total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
@@ -581,7 +584,6 @@ Alert.alert(
     )();
   };
 
-  // دالة حفظ تعيين المسؤول المحدثة المطلوبة
   const saveAssignManager = async () => {
     if (!selectedVehicleForAssign || !chosenDirectManager) {
       Alert.alert('تنبيه', 'اختر المسؤول أولاً.');
@@ -1725,7 +1727,6 @@ Alert.alert(
           {adminTab === 'requestManagers' && currentUser.username === 'ميثاق2' ? renderRequestManagersAdmin() : null}
         </ScrollView>
 
-        {/* المودال المطلوب لتعيين المسؤولين */}
         <Modal
           visible={managerAssignModal}
           transparent
