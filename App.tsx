@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.70.30';
-const APP_BUILD = '70';
+const APP_VERSION = '1.71.31';
+const APP_BUILD = '71';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -31,6 +31,7 @@ type Vehicle = {
   id: string; carNumber: string; name: string; driver: string; status: string; type: string;
   model: string; payload: string; fuelType: string; engineNo: string; chassisNo: string;
   ownership?: 'شركة' | 'خاصة';
+  directManager?: string;
 };
 
 type RequestItem = {
@@ -109,6 +110,13 @@ export default function App() {
   const [adminTab, setAdminTab] = useState('requests');
   const [loadingDb, setLoadingDb] = useState(false);
   
+  // States المطلوبة لتعيين المسؤولين
+  const [availableManagers, setAvailableManagers] = useState<any[]>([]);
+  const [savingManager, setSavingManager] = useState(false);
+  const [managerAssignModal, setManagerAssignModal] = useState(false);
+  const [selectedVehicleForAssign, setSelectedVehicleForAssign] = useState<any>(null);
+  const [chosenDirectManager, setChosenDirectManager] = useState('');
+
   const [tripTypes, setTripTypes] = useState<string[]>(['مهمة عمل','توصيل مواد','مراجعة جهة']);
   const [tripDestinations, setTripDestinations] = useState<string[]>(['صنعاء','عدن','الحديدة','إب','ذمار','رداع']);
   
@@ -144,13 +152,11 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [ownershipTypes, setOwnershipTypes] = useState<string[]>(['شركة','خاصة']);
   
-  // حقول البحث الجديدة لربط السائقين بالسيارات
   const [assignmentSearchCar, setAssignmentSearchCar] = useState('');
   const [assignmentSearchDriver, setAssignmentSearchDriver] = useState('');
   const [assignmentStartDate, setAssignmentStartDate] = useState(TODAY());
   const [assignmentEndDate, setAssignmentEndDate] = useState('');
 
-  // شاشات فرعية لنوع الإرساليات الجديدة
   const [maintenanceServiceSubModal, setMaintenanceServiceSubModal] = useState<'صيانة' | 'بنشر' | null>(null);
 
   const codingMap: Record<string, string[]> = {
@@ -223,7 +229,8 @@ export default function App() {
             fuelType: v.fuel_type || 'ديزل',
             engineNo: v.engine_number || '',
             chassisNo: v.chassis_number || '',
-            ownership: v.ownership === 'خاصة' ? 'خاصة' : 'شركة'
+            ownership: v.ownership === 'خاصة' ? 'خاصة' : 'شركة',
+            directManager: v.direct_manager || v.directManager || ''
           };
         });
         setFleet(mappedFleet);
@@ -267,7 +274,6 @@ export default function App() {
     }
   };
 
-  // التحقق التلقائي من الجلسة المخزنة لضمان عدم الخروج عند إعادة فتح التطبيق (النقطة رقم 3)
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
@@ -564,7 +570,54 @@ export default function App() {
     )();
   };
 
-  // دوال المعاينة والطباعة لنموذج (إصلاح سيارة) و (خدمات بنشر) (النقطة رقم 7)
+  // دالة حفظ تعيين المسؤول المحدثة المطلوبة
+  const saveAssignManager = async () => {
+    if (!selectedVehicleForAssign || !chosenDirectManager) {
+      Alert.alert('تنبيه', 'اختر المسؤول أولاً.');
+      return;
+    }
+
+    setSavingManager(true);
+
+    try {
+      const { data, error } = await supabase.rpc(
+        'assign_vehicle_manager',
+        {
+          p_vehicle_id: Number(selectedVehicleForAssign.id),
+          p_manager_id: chosenDirectManager,
+        }
+      );
+
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error('لم يتم تأكيد حفظ التعيين.');
+      }
+
+      const manager = availableManagers.find(
+        (m: any) => m.id === chosenDirectManager
+      );
+
+      setFleet((prev: any[]) =>
+        prev.map((v: any) =>
+          String(v.id) === String(selectedVehicleForAssign.id)
+            ? { ...v, directManager: manager?.full_name || manager?.username }
+            : v
+        )
+      );
+
+      setManagerAssignModal(false);
+      Alert.alert('نجاح', 'تم حفظ المسؤول في قاعدة البيانات.');
+    } catch (error: any) {
+      Alert.alert(
+        'فشل الحفظ',
+        error?.message || 'تعذر حفظ تعيين المسؤول.'
+      );
+    } finally {
+      setSavingManager(false);
+    }
+  };
+
   const handlePreviewPrintCarRepair = async (req: RequestItem) => {
     const vInfo = fleet.find(v => v.carNumber === req.vehicleId);
     const html = `
@@ -878,7 +931,6 @@ export default function App() {
             <Text style={styles.workflowTitle}>المرحلة: {r.workflow || 'المسؤول المباشر'}</Text>
             {r.imageUri ? <View><Image source={{uri:r.imageUri}} style={styles.requestImage} /></View> : null}
 
-            {/* أزرار المعاينة والطباعة المباشرة عند الموافقة النهائية */}
             {r.type === 'إرسالية صيانة' && r.status === 'تمت الموافقة' && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintCarRepair(r)}>
@@ -912,8 +964,8 @@ export default function App() {
         <Text style={styles.sectionTitle}>مسؤولي الطلبات</Text>
         <Text style={styles.helper}>إدارة المسؤولين، صلاحياتهم، ومسارات مسار الاعتمادات.</Text>
         <View style={{flexDirection: 'row-reverse', gap: 6, marginBottom: 15}}>
-          {['قائمة المسؤولين', 'الصلاحيات', 'مسارات الطلبات'].map((tab, idx) => {
-            const keys = ['list', 'permissions', 'routes'];
+          {['توزيع المسؤولين', 'قائمة المسؤولين', 'الصلاحيات', 'مسارات الطلبات'].map((tab, idx) => {
+            const keys = ['distribute', 'list', 'permissions', 'routes'];
             const active = requestManagersTab === keys[idx];
             return (
               <TouchableOpacity key={keys[idx]} onPress={() => setRequestManagersTab(keys[idx])}
@@ -923,6 +975,60 @@ export default function App() {
             );
           })}
         </View>
+
+        {requestManagersTab === 'distribute' && currentUser?.username === 'ميثاق2' && (
+          <ScrollView style={{ flex: 1 }}>
+            <View style={styles.adminAssignBox}>
+              <Text style={styles.adminAssignTitle}>
+                🛡️ توزيع المسؤولين على السيارات
+              </Text>
+
+              {fleet.map((v: any) => (
+                <View key={String(v.id)} style={styles.assignRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '800', textAlign: 'right' }}>
+                      السيارة رقم {v.car_number ?? v.id}
+                    </Text>
+                    <Text style={{
+                      fontSize: 12,
+                      color: COLORS.muted,
+                      textAlign: 'right'
+                    }}>
+                      المسؤول المباشر: {v.directManager || 'غير معيّن'}
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    style={styles.smallAssignBtn}
+                    onPress={async () => {
+                      setSelectedVehicleForAssign(v);
+                      setChosenDirectManager('');
+                      const { data, error } = await supabase
+                        .from('profiles')
+                        .select('id, username, full_name, role')
+                        .eq('is_active', true)
+                        .in('role', ['manager', 'direct_manager', 'admin'])
+                        .order('full_name');
+
+                      if (error) {
+                        Alert.alert('خطأ', error.message);
+                        return;
+                      }
+
+                      setAvailableManagers(data || []);
+                      setManagerAssignModal(true);
+                    }}
+                  >
+                    <Text style={styles.smallAssignText}>
+                      تعيين / تغيير
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+
         {requestManagersTab === 'list' && (
           <View>
             <Text style={[styles.sectionTitle, {fontSize: 16}]}>قائمة المسؤولين الحاليين</Text>
@@ -1086,7 +1192,6 @@ export default function App() {
     );
   };
 
-  // تعديل واجهة ربط السائقين بالسيارات (النقطة رقم 5)
   const renderAssignments = () => {
     const filteredVehicles = fleet.filter(v => 
       !assignmentSearchCar || v.carNumber.includes(assignmentSearchCar) || v.name.includes(assignmentSearchCar)
@@ -1100,7 +1205,6 @@ export default function App() {
         <Text style={styles.sectionTitle}>ربط السائقين بالسيارات</Text>
         <Text style={styles.helper}>حدد السيارة (بالقائمة أو البحث)، السائق (بالقائمة أو البحث)، وتواريخ الربط.</Text>
         
-        {/* بند اختر السيارة وبحث برقم السيارة */}
         <Text style={styles.label}>اختر السيارة أو ابحث برقمها</Text>
         <View style={{flexDirection: 'row-reverse', gap: 8, marginBottom: 10}}>
           <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={() => setVehicleDropdownVisible(true)}>
@@ -1117,7 +1221,6 @@ export default function App() {
           />
         </View>
 
-        {/* بند السائق وبحث برقم أو اسم السائق */}
         <Text style={styles.label}>السائق</Text>
         <View style={{flexDirection: 'row-reverse', gap: 8, marginBottom: 10}}>
           <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={() => setDriverDropdownVisible(true)}>
@@ -1134,7 +1237,6 @@ export default function App() {
           />
         </View>
 
-        {/* تاريخ بداية الربط */}
         <Text style={styles.label}>تاريخ بداية الربط</Text>
         <TextInput 
           style={styles.input} 
@@ -1144,7 +1246,6 @@ export default function App() {
           textAlign="right" 
         />
 
-        {/* تاريخ نهاية الربط (غير إلزامي) */}
         <Text style={styles.label}>تاريخ نهاية الربط (اختياري / مفتوح)</Text>
         <TextInput 
           style={styles.input} 
@@ -1171,7 +1272,6 @@ export default function App() {
           <Text style={styles.btnText}>حفظ عملية الربط</Text>
         </TouchableOpacity>
 
-        {/* جدول عمليات الربط السابقة */}
         <Text style={[styles.sectionTitle, {marginTop: 25, fontSize: 16}]}>سجل عمليات الربط السابقة</Text>
         {assignments.length === 0 ? (
           <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد عمليات ربط مسجلة بعد.</Text></View>
@@ -1192,7 +1292,6 @@ export default function App() {
           </View>
         )}
 
-        {/* مودال اختيار السيارة */}
         <Modal visible={vehicleDropdownVisible} transparent animationType="fade" onRequestClose={() => setVehicleDropdownVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -1209,7 +1308,6 @@ export default function App() {
           </View>
         </Modal>
 
-        {/* مودال اختيار السائق */}
         <Modal visible={driverDropdownVisible} transparent animationType="fade" onRequestClose={() => setDriverDropdownVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -1293,7 +1391,6 @@ export default function App() {
                   <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
                   <Text style={styles.cardText}>التكلفة الإجمالية: {money(r.total)}</Text>
                   
-                  {/* أزرار المعاينة والطباعة للمستخدم في حال الموافقة */}
                   {r.type === 'إرسالية صيانة' && isApproved && (
                     <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB', marginTop: 8}]} onPress={() => handlePreviewPrintCarRepair(r)}>
                       <Text style={styles.btnText}>معاينة وطباعة النموذج</Text>
@@ -1319,7 +1416,6 @@ export default function App() {
     );
   };
 
-  // تقارير المستخدم المفصلة والإجمالية (النقطة رقم 6)
   const renderUserReportsSection = () => {
     const myRows = requests.filter(r => r.vehicleId === currentUser?.id || r.applicantId === currentUser?.authId);
     const reportCategories = [
@@ -1438,7 +1534,6 @@ export default function App() {
     );
   };
 
-  // واجهة الإعدادات في حساب المستخدم متضمنة أيقونة تسجيل الخروج (النقطة رقم 2)
   const renderUserSettings = () => {
     return (
       <View style={{backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden'}}>
@@ -1470,7 +1565,6 @@ export default function App() {
     );
   };
 
-  // مودال تقديم طلب الخدمة (مع التعديلات الخاصة بإرسالية صيانة وخدمات بنشر - النقطة رقم 7)
   const renderRequestModal = () => {
     if (!serviceTypeModal && !maintenanceServiceSubModal) return null;
 
@@ -1518,7 +1612,6 @@ export default function App() {
             {serviceTypeModal === 'إطارات' && renderSelect('نوع الإطار', selectedTire, tires, setSelectedTire)}
             {serviceTypeModal === 'صيانة' && renderSelect('نوع الصيانة', selectedMaintenance, maintenanceItems, setSelectedMaintenance)}
             
-            {/* نموذج إرسالية صيانة */}
             {serviceTypeModal === 'إرسالية صيانة' && (
               <>
                 {renderSelect('الورشة', selectedWorkshop, workshops, setSelectedWorkshop)}
@@ -1530,7 +1623,6 @@ export default function App() {
               </>
             )}
 
-            {/* نموذج إرسالية خدمات بنشر */}
             {serviceTypeModal === 'إرسالية خدمات بنشر' && (
               <>
                 <Text style={styles.label}>التاريخ</Text>
@@ -1562,7 +1654,6 @@ export default function App() {
     );
   };
 
-  // واجهة تسجيل الدخول المعدلة (النقطة رقم 1: حذف عبارة نظام إدارة السيارات، جاهزة، عدد السيارات، ومزامنة تحميل السيارات، وظهور اسم المستخدم وكلمة المرور فقط)
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.loginContainer}>
@@ -1579,7 +1670,6 @@ export default function App() {
     );
   }
 
-  // لوحة تحكم المسؤول / المدير (مع نقل زر تسجيل الخروج لقسم الإعدادات - النقطة رقم 2)
   if (currentUser.role === 'admin' || currentUser.role === 'manager') {
     const adminNav = [
       ['requests', '📋', 'الطلبات'],
@@ -1624,6 +1714,64 @@ export default function App() {
           {adminTab === 'requestManagers' && currentUser.username === 'ميثاق2' ? renderRequestManagersAdmin() : null}
         </ScrollView>
 
+        {/* المودال المطلوب لتعيين المسؤولين */}
+        <Modal
+          visible={managerAssignModal}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setManagerAssignModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>
+                تعيين مسؤول للسيارة رقم {
+                  selectedVehicleForAssign?.car_number ??
+                  selectedVehicleForAssign?.id
+                }
+              </Text>
+
+              <Text style={styles.label}>
+                اختر المسؤول:
+              </Text>
+
+              <ScrollView style={{ maxHeight: 280 }}>
+                {availableManagers.map((mgr: any) => (
+                  <TouchableOpacity
+                    key={mgr.id}
+                    style={[
+                      styles.mgrOption,
+                      chosenDirectManager === mgr.id &&
+                        styles.mgrOptionActive
+                    ]}
+                    onPress={() => setChosenDirectManager(mgr.id)}
+                  >
+                    <Text style={styles.mgrOptionText}>
+                      {mgr.full_name} — {mgr.username}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.primaryBtnLarge}
+                disabled={savingManager}
+                onPress={saveAssignManager}
+              >
+                <Text style={styles.btnTextLarge}>
+                  {savingManager ? 'جارٍ الحفظ...' : 'حفظ التعيين'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => setManagerAssignModal(false)}
+              >
+                <Text style={styles.btnText}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
         <Modal visible={!!codingModal} transparent animationType="slide" onRequestClose={() => setCodingModal(null)}>
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
@@ -1646,7 +1794,6 @@ export default function App() {
     );
   }
 
-  // واجهة حساب المستخدم العادي
   const isManagerOrAdminUser = currentUser?.role === 'manager' || currentUser?.role === 'admin' || currentUser?.role === 'direct_manager' || currentUser?.role === 'services_manager';
   return (
     <SafeAreaView style={styles.container}>
@@ -1662,7 +1809,6 @@ export default function App() {
         {userTab === 'settings' ? renderUserSettings() : null}
       </ScrollView>
 
-      {/* شريط التنقل السفلي المتناسق مع الهاتف (النقطة رقم 4: ضمان عدم اختفاء الأزرار) */}
       <View style={styles.driverNav}>
         {[
           ['service','🏠','الرئيسية'],
@@ -1772,4 +1918,14 @@ const styles = StyleSheet.create({
   requestFormContent:{padding:16,paddingBottom:30},
   requestFooter:{backgroundColor:'#fff',padding:10,borderTopWidth:1,borderTopColor:COLORS.border,flexDirection:'row-reverse'},
   readOnlyInput:{backgroundColor:'#E2E8F0',borderWidth:1,borderColor:COLORS.border,borderRadius:12,paddingHorizontal:14,paddingVertical:12,fontSize:15,color:COLORS.text,marginBottom:10},
+  adminAssignBox: { backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: COLORS.border },
+  adminAssignTitle: { fontSize: 18, fontWeight: '900', textAlign: 'right', marginBottom: 15, color: COLORS.text },
+  assignRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F5F9' },
+  smallAssignBtn: { backgroundColor: COLORS.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  smallAssignText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  mgrOption: { padding: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border, marginBottom: 8, backgroundColor: '#F8FAFC' },
+  mgrOptionActive: { backgroundColor: '#FFF0F1', borderColor: COLORS.primary },
+  mgrOptionText: { textAlign: 'right', fontWeight: '700', color: COLORS.text },
+  primaryBtnLarge: { backgroundColor: COLORS.primary, borderRadius: 12, padding: 14, alignItems: 'center', marginTop: 10 },
+  btnTextLarge: { color: '#fff', fontWeight: '900', fontSize: 16, textAlign: 'center' },
 });
