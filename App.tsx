@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.71.31';
-const APP_BUILD = '71';
+const APP_VERSION = '1.72.32';
+const APP_BUILD = '72';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -446,10 +446,21 @@ export default function App() {
     }
   };
 
-  const submitRequest = async () => {
-    if (!currentUser || !serviceTypeModal) return;
-    if (!currentUser.authId) { Alert.alert('تسجيل الدخول مطلوب', 'أعد تسجيل الدخول قبل إرسال الطلب.'); return; }
-    
+  const { data: { user }, error: authError } =
+  await supabase.auth.getUser();
+
+if (authError || !user) {
+  Alert.alert(
+    'خطأ في جلسة الدخول',
+    authError?.message || 'لا توجد جلسة دخول موثقة.'
+  );
+  return;
+}
+
+Alert.alert(
+  'اختبار هوية المستخدم',
+  `معرّف Auth:\n${user.id}\n\nالبريد:\n${user.email || 'غير متوفر'}`
+);
     const tempId = `REQ-${Date.now().toString().slice(-6)}`;
     const item: RequestItem = {
       id: tempId, vehicleId: currentUser.id, driver: currentUser.driver || currentUser.name || '',
