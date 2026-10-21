@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.74.34';
-const APP_BUILD = '74';
+const APP_VERSION = '1.75.35';
+const APP_BUILD = '75';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -136,6 +136,7 @@ export default function App() {
   const [dispatchEditForm, setDispatchEditForm] = useState({ workshop: '', engineer: '', faultType: '', requiredWork: '', client: '', serviceDescription: '', notes: '' });
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [newItem, setNewItem] = useState('');
+  const [editingCodingItem, setEditingCodingItem] = useState<string | null>(null);
   
   const [selectedStation, setSelectedStation] = useState(stations[0]);
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
@@ -221,6 +222,53 @@ export default function App() {
     }
   });
 
+  const loadAppCodings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('app_codings')
+        .select('id, category, item_name, price, is_active, sort_order')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('item_name', { ascending: true });
+
+      if (error) throw error;
+      const rows = data || [];
+      const itemsFor = (category: string) => rows
+        .filter((row: any) => row.category === category)
+        .map((row: any) => String(row.item_name || '').trim())
+        .filter(Boolean);
+
+      const categorySetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
+        'المحروقات': setFuelTypes,
+        'الزيوت': setOils,
+        'البطاريات': setBatteries,
+        'قطع الغيار': setParts,
+        'الإطارات': setTires,
+        'المحطات': setStations,
+        'الصيانة': setMaintenanceItems,
+        'الورش': setWorkshops,
+        'العملاء': setClients,
+        'المهندسين': setEngineers,
+        'مالك السيارة': setOwnershipTypes,
+        'نوع المهمة': setTripTypes,
+        'الوجهة/المنطقة': setTripDestinations,
+      };
+      Object.entries(categorySetters).forEach(([category, setter]) => {
+        const items = itemsFor(category);
+        setter(items);
+      });
+
+      const loadedPrices: Record<string, number> = {};
+      rows.filter((row: any) => String(row.category || '').startsWith('تسعير '))
+        .forEach((row: any) => {
+          loadedPrices[String(row.item_name)] = row.price == null ? 0 : Number(row.price) || 0;
+        });
+      if (Object.keys(loadedPrices).length) setPrices(loadedPrices);
+    } catch (e: any) {
+      console.log('Load app codings error:', e?.message || e);
+    }
+  };
+
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
@@ -292,12 +340,14 @@ export default function App() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         await fetchUserProfileAndRestore(session.user);
+        await loadAppCodings();
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await fetchUserProfileAndRestore(session.user);
+        await loadAppCodings();
       } else {
         setCurrentUser(null);
       }
@@ -321,7 +371,7 @@ export default function App() {
       
       if (isAdmin) {
         let extraRoles: string[] = [];
-        const { data: roleRows } = await supabase.from('user_roles').select('role').eq('profile_id', user.id);
+        const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', user.id);
         if (roleRows) extraRoles = roleRows.map((row: any) => String(row.role || '').toLowerCase());
         setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: user.id, username: profile.username, name: profile.full_name || profile.username, profile, extraRoles });
       } else {
@@ -832,21 +882,77 @@ export default function App() {
     }
   };
 
-  const saveCodingItem = () => {
-    if (!codingModal || !newItem.trim()) return;
+  const saveCodingItem = async () => {
+    const itemName = newItem.trim();
+    if (!codingModal || !itemName) return;
     const setter = codingSetters[codingModal];
     if (!setter) return;
-    setter(prev => [...prev, newItem.trim()]);
-    setNewItem('');
+    if (codingMap[codingModal]?.some(item => item.trim() === itemName && item !== editingCodingItem)) {
+      Alert.alert('تنبيه', 'هذا العنصر موجود بالفعل.');
+      return;
+    }
+    try {
+      if (editingCodingItem) {
+        const oldName = editingCodingItem;
+        const { error } = await supabase.from('app_codings').update({
+          item_name: itemName,
+          updated_at: new Date().toISOString(),
+        }).eq('category', codingModal).eq('item_name', oldName);
+        if (error) throw error;
+        setter(prev => prev.map(item => item === oldName ? itemName : item));
+        setEditingCodingItem(null);
+        setNewItem('');
+        Alert.alert('تم التعديل', 'تم حفظ تعديل التكويد في قاعدة البيانات.');
+      } else {
+        const { error } = await supabase.from('app_codings').insert({
+          category: codingModal,
+          item_name: itemName,
+          is_active: true,
+          sort_order: codingMap[codingModal].length + 1,
+        });
+        if (error) throw error;
+        setter(prev => [...prev, itemName]);
+        setNewItem('');
+        Alert.alert('تم الحفظ', 'تم حفظ التكويد في قاعدة البيانات.');
+      }
+    } catch (e: any) {
+      Alert.alert(editingCodingItem ? 'تعذر التعديل' : 'تعذر الحفظ', e?.message || 'لم يتم حفظ التغيير في قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
+    }
   };
 
   const deleteCodingItem = (key: string, index: number) => {
     const setter = codingSetters[key];
-    if (!setter) return;
-    Alert.alert('تأكيد الحذف', 'هل تريد حذف هذا التكويد؟', [
+    const itemName = codingMap[key]?.[index];
+    if (!setter || !itemName) return;
+    Alert.alert('تأكيد الحذف', `هل تريد حذف التكويد «${itemName}»؟`, [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: () => setter(prev => prev.filter((_, i) => i !== index)) }
+      { text: 'حذف', style: 'destructive', onPress: async () => {
+        try {
+          const { error } = await supabase.from('app_codings')
+            .delete().eq('category', key).eq('item_name', itemName);
+          if (error) throw error;
+          setter(prev => prev.filter(item => item !== itemName));
+          Alert.alert('تم الحذف', 'تم حذف التكويد من قاعدة البيانات.');
+        } catch (e: any) {
+          Alert.alert('تعذر الحذف', e?.message || 'لم يتم حذف التكويد من قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
+        }
+      }}
     ]);
+  };
+
+  const saveCodingPrice = async (category: string, itemName: string, price: number) => {
+    try {
+      const { error } = await supabase.from('app_codings').upsert({
+        category,
+        item_name: itemName,
+        price: Math.max(0, Number(price) || 0),
+        is_active: true,
+      }, { onConflict: 'category,item_name' });
+      if (error) throw error;
+    } catch (e: any) {
+      Alert.alert('تعذر حفظ السعر', e?.message || 'لم يتم حفظ السعر في قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
+      await loadAppCodings();
+    }
   };
 
   const setVehiclePermission = (vehicleId: string, key: keyof PermissionSet, value: boolean) => {
@@ -945,7 +1051,8 @@ export default function App() {
                   <View key={item} style={styles.priceRow}>
                     <Text style={[styles.cardText,{flex:1}]}>{item}</Text>
                     <TextInput style={styles.priceInput} keyboardType="numeric" value={String(prices[item] ?? 0)}
-                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))} />
+                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))}
+                      onEndEditing={() => saveCodingPrice(pricingCategoryModal || '', item, prices[item] ?? 0)} />
                   </View>
                 ))}
               </ScrollView>
@@ -1915,17 +2022,19 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>تكويد {codingModal}</Text>
-              <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder="اسم العنصر" textAlign="right" />
-              <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}><Text style={styles.btnText}>إضافة عنصر</Text></TouchableOpacity>
+              <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder={editingCodingItem ? "اسم العنصر بعد التعديل" : "اسم العنصر الجديد"} textAlign="right" />
+              <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}><Text style={styles.btnText}>{editingCodingItem ? "حفظ التعديل" : "إضافة عنصر"}</Text></TouchableOpacity>
+              {editingCodingItem ? <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setEditingCodingItem(null); setNewItem(''); }}><Text style={styles.btnText}>إلغاء التعديل</Text></TouchableOpacity> : null}
               <ScrollView style={{maxHeight:320}}>
                 {codingModal ? codingMap[codingModal].map((item,index) => (
                   <View key={`${item}-${index}`} style={styles.inlineRow}>
                     <Text style={{flex:1,textAlign:'right'}}>{item}</Text>
+                    <TouchableOpacity onPress={() => { setEditingCodingItem(item); setNewItem(item); }}><Text style={{color:COLORS.primary,fontWeight:'800',marginHorizontal:8}}>تعديل</Text></TouchableOpacity>
                     <TouchableOpacity onPress={() => deleteCodingItem(codingModal,index)}><Text style={styles.deleteText}>حذف</Text></TouchableOpacity>
                   </View>
                 )) : null}
               </ScrollView>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setNewItem(''); }}><Text style={styles.btnText}>إغلاق</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setNewItem(''); setEditingCodingItem(null); }}><Text style={styles.btnText}>إغلاق</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
