@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.72.32';
-const APP_BUILD = '72';
+const APP_VERSION = '1.73.33';
+const APP_BUILD = '73';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -122,6 +122,8 @@ export default function App() {
   const [adminRequestTab, setAdminRequestTab] = useState('وقود');
   const [pricingCategoryModal, setPricingCategoryModal] = useState<string | null>(null);
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
+  const [editingDispatchRequest, setEditingDispatchRequest] = useState<RequestItem | null>(null);
+  const [dispatchEditForm, setDispatchEditForm] = useState({ workshop: '', engineer: '', faultType: '', requiredWork: '', client: '', serviceDescription: '', notes: '' });
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [newItem, setNewItem] = useState('');
   
@@ -459,11 +461,6 @@ export default function App() {
       return;
     }
 
-    Alert.alert(
-      'اختبار هوية المستخدم',
-      `معرّف Auth:\n${user.id}\n\nالبريد:\n${user.email || 'غير متوفر'}`
-    );
-    
     const tempId = `REQ-${Date.now().toString().slice(-6)}`;
     const item: RequestItem = {
       id: tempId, vehicleId: currentUser.id, driver: currentUser.driver || currentUser.name || '',
@@ -631,6 +628,61 @@ export default function App() {
     }
   };
 
+  const openDispatchEditor = (req: RequestItem) => {
+    setDispatchEditForm({
+      workshop: req.workshop || '',
+      engineer: req.engineer || '',
+      faultType: req.faultType || '',
+      requiredWork: req.requiredWork || '',
+      client: req.client || '',
+      serviceDescription: req.serviceDescription || '',
+      notes: req.notes || '',
+    });
+    setEditingDispatchRequest(req);
+  };
+
+  const saveDispatchEdits = async () => {
+    if (!editingDispatchRequest) return;
+    const updated: RequestItem = {
+      ...editingDispatchRequest,
+      workshop: dispatchEditForm.workshop.trim(),
+      engineer: dispatchEditForm.engineer.trim(),
+      faultType: dispatchEditForm.faultType.trim(),
+      requiredWork: dispatchEditForm.requiredWork.trim(),
+      client: dispatchEditForm.client.trim(),
+      serviceDescription: dispatchEditForm.serviceDescription.trim(),
+      notes: dispatchEditForm.notes.trim(),
+    };
+
+    if (updated.type === 'إرسالية صيانة' &&
+        (!updated.workshop || !updated.engineer || !updated.faultType || !updated.requiredWork)) {
+      Alert.alert('بيانات ناقصة', 'أكمل الورشة والمهندس والعطل والعمل المطلوب قبل الحفظ.');
+      return;
+    }
+    if (updated.type === 'إرسالية خدمات بنشر' &&
+        (!updated.client || !updated.serviceDescription)) {
+      Alert.alert('بيانات ناقصة', 'أكمل اسم العميل ووصف الخدمة قبل الحفظ.');
+      return;
+    }
+
+    try {
+      setLoadingDb(true);
+      const { error } = await supabase
+        .from('requests')
+        .update({ notes: makeStoredNotes(updated) })
+        .eq('id', Number(updated.id));
+      if (error) throw error;
+      setRequests(prev => prev.map(r => r.id === updated.id ? updated : r));
+      setEditingDispatchRequest(null);
+      Alert.alert('تم الحفظ', 'تم حفظ تعديلات الإرسالية في قاعدة البيانات. يمكنك الآن معاينة النموذج وطباعته.');
+      await loadSupabaseData();
+    } catch (e: any) {
+      Alert.alert('تعذر حفظ التعديلات', e?.message || 'تحقق من صلاحيات تحديث جدول requests.');
+    } finally {
+      setLoadingDb(false);
+    }
+  };
+
   const handlePreviewPrintCarRepair = async (req: RequestItem) => {
     const vInfo = fleet.find(v => v.carNumber === req.vehicleId);
     const html = `
@@ -663,7 +715,7 @@ export default function App() {
 
         <div class="center-title">طلب إصلاح سيارة</div>
 
-        <p>الإخوة / <b>${escapeHtml(req.client || 'ورشة الصيانة')}</b> المحترمون،،،</p>
+        <p>الإخوة / <b>${escapeHtml(req.workshop || req.client || 'ورشة الصيانة')}</b> المحترمون،،،</p>
         <p>بعد التحية،،</p>
         <p>رجاءً إجراء ما يلي على السيارة الموضحة بياناتها أدناه، وافادتنا بتقرير يوضح نوع العطل وسببه:</p>
 
@@ -671,6 +723,7 @@ export default function App() {
           <div><b>رقم السيارة:</b> ${escapeHtml(req.vehicleId)} &nbsp;&nbsp;&nbsp; <b>اسم السيارة:</b> ${escapeHtml(vInfo?.name || '')}</div>
           <div style="margin-top: 5px;"><b>نوع السيارة:</b> ${escapeHtml(vInfo?.type || '')} &nbsp;&nbsp;&nbsp; <b>الموديل:</b> ${escapeHtml(vInfo?.model || '')}</div>
           <div style="margin-top: 5px;"><b>السائق:</b> ${escapeHtml(req.driver)}</div>
+          <div style="margin-top: 5px;"><b>الورشة:</b> ${escapeHtml(req.workshop || '')} &nbsp;&nbsp;&nbsp; <b>المهندس:</b> ${escapeHtml(req.engineer || '')}</div>
         </div>
         <div style="text-align: left; font-weight: bold; margin-bottom: 15px;">الخدمات الإدارية</div>
 
@@ -679,7 +732,7 @@ export default function App() {
           <p>بعد فحص السيارة الموضحة بياناتها أعلاه، اتضح ما يلي:</p>
           <ol>
             <li><b>الأعطال:</b> ${escapeHtml(req.faultType || req.notes || '')}</li>
-            <li><b>سبب الأعطال إن وجد:</b> ${escapeHtml(req.requiredWork || '')}</li>
+            <li><b>الإجراء المطلوب:</b> ${escapeHtml(req.requiredWork || '')}</li>
           </ol>
           <div style="text-align: left; margin-top: 20px;"><b>مسؤول الورشة</b></div>
         </div>
@@ -895,12 +948,11 @@ export default function App() {
       if (r.type !== adminRequestTab) return false;
       const isFinalApprover = currentUser?.username === 'ميثاق2';
       if (isFinalApprover) {
+        // ميثاق يرى الطلبات المحالة للخدمات وكذلك الطلبات المعتمدة نهائياً حتى يتمكن من طباعتها.
         return (
           r.directManagerStatus === 'موافق' &&
-          r.servicesStatus !== 'موافق' &&
           r.servicesStatus !== 'مرفوض' &&
-          r.status !== 'مرفوض' &&
-          r.status !== 'تمت الموافقة'
+          r.status !== 'مرفوض'
         );
       }
       const isPendingDirectApproval =
@@ -944,17 +996,24 @@ export default function App() {
             <Text style={styles.workflowTitle}>المرحلة: {r.workflow || 'المسؤول المباشر'}</Text>
             {r.imageUri ? <View><Image source={{uri:r.imageUri}} style={styles.requestImage} /></View> : null}
 
-            {r.type === 'إرسالية صيانة' && r.status === 'تمت الموافقة' && (
+            {(r.type === 'إرسالية صيانة' || r.type === 'إرسالية خدمات بنشر') && currentUser?.username === 'ميثاق2' && r.status !== 'تمت الموافقة' && (
               <View style={styles.actionRow}>
-                <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintCarRepair(r)}>
-                  <Text style={styles.btnText}>معاينة وطباعة</Text>
+                <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#0F766E'}]} onPress={() => openDispatchEditor(r)}>
+                  <Text style={styles.btnText}>تعديل الإرسالية وحفظها</Text>
                 </TouchableOpacity>
               </View>
             )}
-            {r.type === 'إرسالية خدمات بنشر' && r.status === 'تمت الموافقة' && (
+            {r.type === 'إرسالية صيانة' && (r.status === 'تمت الموافقة' || currentUser?.username === 'ميثاق2') && (
+              <View style={styles.actionRow}>
+                <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintCarRepair(r)}>
+                  <Text style={styles.btnText}>معاينة وطباعة نموذج الإرسالية</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            {r.type === 'إرسالية خدمات بنشر' && (r.status === 'تمت الموافقة' || currentUser?.username === 'ميثاق2') && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintPunctureService(r)}>
-                  <Text style={styles.btnText}>معاينة وطباعة</Text>
+                  <Text style={styles.btnText}>معاينة وطباعة نموذج الإرسالية</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1778,6 +1837,48 @@ export default function App() {
                 style={styles.secondaryBtn}
                 onPress={() => setManagerAssignModal(false)}
               >
+                <Text style={styles.btnText}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal
+          visible={!!editingDispatchRequest}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setEditingDispatchRequest(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>تعديل بيانات الإرسالية #{editingDispatchRequest?.id}</Text>
+              <ScrollView keyboardShouldPersistTaps="handled" style={{maxHeight: '78%'}}>
+                {editingDispatchRequest?.type === 'إرسالية صيانة' ? (
+                  <>
+                    <Text style={styles.label}>الورشة</Text>
+                    <TextInput style={styles.input} value={dispatchEditForm.workshop} onChangeText={value => setDispatchEditForm(prev => ({...prev, workshop: value}))} textAlign="right" />
+                    <Text style={styles.label}>المهندس</Text>
+                    <TextInput style={styles.input} value={dispatchEditForm.engineer} onChangeText={value => setDispatchEditForm(prev => ({...prev, engineer: value}))} textAlign="right" />
+                    <Text style={styles.label}>سبب المشكلة / العطل</Text>
+                    <TextInput style={[styles.input,{minHeight:75}]} value={dispatchEditForm.faultType} onChangeText={value => setDispatchEditForm(prev => ({...prev, faultType: value}))} multiline textAlign="right" />
+                    <Text style={styles.label}>الإجراء المطلوب</Text>
+                    <TextInput style={[styles.input,{minHeight:75}]} value={dispatchEditForm.requiredWork} onChangeText={value => setDispatchEditForm(prev => ({...prev, requiredWork: value}))} multiline textAlign="right" />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.label}>العميل</Text>
+                    <TextInput style={styles.input} value={dispatchEditForm.client} onChangeText={value => setDispatchEditForm(prev => ({...prev, client: value}))} textAlign="right" />
+                    <Text style={styles.label}>الخدمة المطلوبة / وصف الخدمة</Text>
+                    <TextInput style={[styles.input,{minHeight:75}]} value={dispatchEditForm.serviceDescription} onChangeText={value => setDispatchEditForm(prev => ({...prev, serviceDescription: value}))} multiline textAlign="right" />
+                  </>
+                )}
+                <Text style={styles.label}>ملاحظات</Text>
+                <TextInput style={[styles.input,{minHeight:65}]} value={dispatchEditForm.notes} onChangeText={value => setDispatchEditForm(prev => ({...prev, notes: value}))} multiline textAlign="right" />
+              </ScrollView>
+              <TouchableOpacity style={styles.primaryBtnLarge} disabled={loadingDb} onPress={saveDispatchEdits}>
+                <Text style={styles.btnTextLarge}>{loadingDb ? 'جارٍ الحفظ...' : 'حفظ التعديلات في قاعدة البيانات'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setEditingDispatchRequest(null)}>
                 <Text style={styles.btnText}>إلغاء</Text>
               </TouchableOpacity>
             </View>
