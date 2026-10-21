@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.75.35';
-const APP_BUILD = '75';
+const APP_VERSION = '1.76.36';
+const APP_BUILD = '76';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -114,6 +114,11 @@ export default function App() {
   
   const [requestManagersTab, setRequestManagersTab] = useState('distribute');
   const [managerProfiles, setManagerProfiles] = useState<any[]>([]);
+  const [driverProfiles, setDriverProfiles] = useState<any[]>([]);
+  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   const [workflowRoutes, setWorkflowRoutes] = useState<string[]>(['المسؤول المباشر', 'الخدمات الإدارية', 'المسؤول النهائي']);
   const [newRouteName, setNewRouteName] = useState('');
   const [userTab, setUserTab] = useState('service');
@@ -273,7 +278,12 @@ export default function App() {
     try {
       setLoadingDb(true);
       const { data: pData, error: pError } = await supabase.from('profiles').select('id, username, full_name, role, phone, is_active');
-      if (!pError && pData) setManagerProfiles(pData);
+      if (!pError && pData) {
+        setManagerProfiles(pData);
+        setDriverProfiles(pData.filter((p: any) =>
+          p.is_active !== false && ['driver', 'سائق', 'سائق سيارة'].includes(String(p.role || '').trim().toLowerCase())
+        ));
+      }
       const profilesForLookup = pData || [];
       const { data: vData, error: vError } = await supabase.from('vehicles').select('*');
       if (!vError && vData) {
@@ -298,6 +308,33 @@ export default function App() {
           };
         });
         setFleet(mappedFleet);
+      }
+      // Load persisted vehicle-driver assignments from the dedicated relation table.
+      const { data: assignmentRows, error: assignmentError } = await supabase
+        .from('vehicle_driver_assignments')
+        .select('id, vehicle_id, driver_id, start_date, end_date');
+      if (assignmentError) {
+        console.log('Load vehicle-driver assignments error:', assignmentError.message);
+      } else {
+        const profileRows = pData || [];
+        const vehicleRows = vData || [];
+        const mappedAssignments: Assignment[] = (assignmentRows || []).map((row: any) => {
+          const profile = profileRows.find((p: any) => String(p.id) === String(row.driver_id));
+          const vehicle = vehicleRows.find((v: any) => String(v.id) === String(row.vehicle_id));
+          return {
+            id: String(row.id),
+            driver: String(profile?.full_name || profile?.username || 'سائق غير معروف'),
+            driverId: String(row.driver_id || ''),
+            vehicleId: String(vehicle?.car_number || row.vehicle_id || ''),
+            startDate: String(row.start_date || ''),
+            endDate: row.end_date ? String(row.end_date) : 'مفتوح',
+            notes: ''
+          };
+        });
+        setAssignments(mappedAssignments.sort((a, b) => b.startDate.localeCompare(a.startDate)));
+        const activeByVehicle = new Map<string, Assignment>();
+        mappedAssignments.forEach((a) => { if (a.endDate === 'مفتوح') activeByVehicle.set(a.vehicleId, a); });
+        setFleet((prev) => prev.map((v) => ({ ...v, driver: activeByVehicle.get(v.carNumber)?.driver || '' })));
       }
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
       if (!rError && rData) {
@@ -408,10 +445,11 @@ export default function App() {
     return rows.length ? Number(rows[0].currOdo) || 0 : 0;
   };
 
-  const driverNames = useMemo(
-    () => Array.from(new Set(fleet.map(v => v.driver).filter(Boolean))),
-    [fleet]
-  );
+  const driverNames = useMemo(() => {
+    const fromProfiles = driverProfiles.map((p: any) => String(p.full_name || p.username || '').trim()).filter(Boolean);
+    const names = fromProfiles.length ? fromProfiles : fleet.map(v => String(v.driver || '').trim()).filter(Boolean);
+    return Array.from(new Set(names));
+  }, [driverProfiles, fleet]);
 
   const assignmentVehicle = fleet.find(v => v.carNumber === assignmentForm.vehicleId.trim());
 
@@ -448,6 +486,35 @@ export default function App() {
       Alert.alert('خطأ في تسجيل الدخول', e?.message || 'تعذر الاتصال بخدمة تسجيل الدخول.');
     } finally {
       setLoadingDb(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    const nextPassword = newPassword;
+    if (!currentUser?.authId) {
+      Alert.alert('تعذر تغيير كلمة المرور', 'لم يتم العثور على جلسة دخول صالحة. سجّل الخروج ثم ادخل مجدداً.');
+      return;
+    }
+    if (nextPassword.length < 6) {
+      Alert.alert('كلمة المرور غير صالحة', 'يجب أن تتكون كلمة المرور الجديدة من 6 أحرف أو أرقام على الأقل.');
+      return;
+    }
+    if (nextPassword !== confirmNewPassword) {
+      Alert.alert('عدم تطابق', 'تأكيد كلمة المرور لا يطابق كلمة المرور الجديدة.');
+      return;
+    }
+    try {
+      setSavingPassword(true);
+      const { error } = await supabase.auth.updateUser({ password: nextPassword });
+      if (error) throw error;
+      setChangePasswordVisible(false);
+      setNewPassword('');
+      setConfirmNewPassword('');
+      Alert.alert('تم بنجاح', 'تم تغيير كلمة المرور. استخدم كلمة المرور الجديدة في تسجيل الدخول القادم.');
+    } catch (e: any) {
+      Alert.alert('تعذر تغيير كلمة المرور', e?.message || 'حدث خطأ أثناء حفظ كلمة المرور. تحقق من الاتصال ثم حاول مجدداً.');
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -1400,9 +1467,10 @@ export default function App() {
     const filteredVehicles = fleet.filter(v => 
       !assignmentSearchCar || v.carNumber.includes(assignmentSearchCar) || v.name.includes(assignmentSearchCar)
     );
-    const filteredDrivers = driverNames.filter(d => 
-      !assignmentSearchDriver || d.includes(assignmentSearchDriver)
-    );
+    const filteredDrivers = driverProfiles.filter((p: any) => {
+      const name = String(p.full_name || p.username || '').trim();
+      return name && (!assignmentSearchDriver || name.includes(assignmentSearchDriver));
+    });
 
     return (
       <View>
@@ -1427,7 +1495,7 @@ export default function App() {
 
         <Text style={styles.label}>السائق</Text>
         <View style={{flexDirection: 'row-reverse', gap: 8, marginBottom: 10}}>
-          <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={() => setDriverDropdownVisible(true)}>
+          <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={async () => { await loadSupabaseData(); setDriverDropdownVisible(true); }}>
             <Text style={{textAlign: 'right', color: assignmentForm.driver ? COLORS.text : COLORS.muted}}>
               {assignmentForm.driver || 'اختر السائق'}
             </Text>
@@ -1459,19 +1527,56 @@ export default function App() {
           textAlign="right" 
         />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={() => {
+        <TouchableOpacity style={styles.primaryBtn} onPress={async () => {
           if (!assignmentForm.vehicleId || !assignmentForm.driver) { Alert.alert('تنبيه', 'أكمل بيانات السيارة والسائق للربط.'); return; }
-          const newAsg: Assignment = {
-            id: `ASG-${Date.now()}`,
-            driver: assignmentForm.driver,
-            driverId: assignmentForm.driver,
-            vehicleId: assignmentForm.vehicleId,
-            startDate: assignmentStartDate,
-            endDate: assignmentEndDate || 'مفتوح',
-            notes: 'تم الربط بنجاح'
-          };
-          setAssignments(prev => [newAsg, ...prev]);
-          Alert.alert('تم', 'تم حفظ عملية الربط بنجاح.');
+          try {
+            const selectedVehicle = fleet.find(v => v.carNumber === assignmentForm.vehicleId);
+            const selectedDriver = driverProfiles.find((p: any) => String(p.id) === String(assignmentForm.driverId))
+              || driverProfiles.find((p: any) => String(p.full_name || p.username || '').trim() === assignmentForm.driver);
+            const vehicleDbId = Number(selectedVehicle?.id);
+            const driverUuid = String(selectedDriver?.id || '');
+            if (!Number.isFinite(vehicleDbId) || vehicleDbId <= 0) throw new Error('تعذر تحديد المعرّف الرقمي للسيارة. حدّث قائمة السيارات وحاول مجدداً.');
+            if (!driverUuid) throw new Error('تعذر تحديد حساب السائق في profiles. أعد اختيار السائق من القائمة.');
+            if (assignmentEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(assignmentEndDate)) throw new Error('تاريخ النهاية يجب أن يكون بصيغة YYYY-MM-DD.');
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(assignmentStartDate)) throw new Error('تاريخ البداية يجب أن يكون بصيغة YYYY-MM-DD.');
+            if (assignmentEndDate && assignmentEndDate < assignmentStartDate) throw new Error('تاريخ النهاية لا يمكن أن يسبق تاريخ البداية.');
+            const { data: authData } = await supabase.auth.getUser();
+            const assignedBy = authData.user?.id || null;
+            // Close any currently active assignment for this vehicle before inserting the new one.
+            const { error: closeError } = await supabase
+              .from('vehicle_driver_assignments')
+              .update({ end_date: assignmentStartDate })
+              .eq('vehicle_id', vehicleDbId)
+              .is('end_date', null);
+            if (closeError) throw closeError;
+            const { data: inserted, error: insertError } = await supabase
+              .from('vehicle_driver_assignments')
+              .insert({
+                vehicle_id: vehicleDbId,
+                driver_id: driverUuid,
+                start_date: assignmentStartDate,
+                end_date: assignmentEndDate || null,
+                assigned_by: assignedBy
+              })
+              .select('id, vehicle_id, driver_id, start_date, end_date')
+              .single();
+            if (insertError) throw insertError;
+            const newAsg: Assignment = {
+              id: String(inserted.id),
+              driver: String(selectedDriver.full_name || selectedDriver.username || assignmentForm.driver),
+              driverId: driverUuid,
+              vehicleId: assignmentForm.vehicleId,
+              startDate: String(inserted.start_date || assignmentStartDate),
+              endDate: inserted.end_date ? String(inserted.end_date) : 'مفتوح',
+              notes: ''
+            };
+            await loadSupabaseData();
+            setAssignments(prev => [newAsg, ...prev.filter(a => a.id !== newAsg.id)]);
+            setAssignmentForm({ id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '' });
+            Alert.alert('تم', 'تم حفظ ربط السائق في قاعدة البيانات بنجاح.');
+          } catch (e: any) {
+            Alert.alert('تعذر حفظ الربط', e?.message || 'لم يتم حفظ التخصيص. تحقق من سياسة RLS ثم حاول مجدداً.');
+          }
         }}>
           <Text style={styles.btnText}>حفظ عملية الربط</Text>
         </TouchableOpacity>
@@ -1517,12 +1622,16 @@ export default function App() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>اختيار السائق</Text>
               <ScrollView style={{ maxHeight: 450 }}>
-                {filteredDrivers.map(name => (
-                  <TouchableOpacity key={name} style={styles.driverOption}
-                    onPress={() => { setAssignmentForm(p => ({ ...p, driver: name })); setDriverDropdownVisible(false); }}>
-                    <Text style={styles.driverOptionText}>{name}</Text>
-                  </TouchableOpacity>
-                ))}
+                {filteredDrivers.length === 0 ? <Text style={styles.emptyText}>لم يتم العثور على حسابات سائقين نشطة في profiles. تحقق من أن role يساوي driver وأن is_active مفعّل.</Text> : null}
+                {filteredDrivers.map((profile: any) => {
+                  const name = String(profile.full_name || profile.username || '').trim();
+                  return (
+                    <TouchableOpacity key={String(profile.id)} style={styles.driverOption}
+                      onPress={() => { setAssignmentForm(p => ({ ...p, driver: name, driverId: String(profile.id) })); setDriverDropdownVisible(false); }}>
+                      <Text style={styles.driverOptionText}>{name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </ScrollView>
               <TouchableOpacity style={styles.secondaryBtn} onPress={() => setDriverDropdownVisible(false)}>
                 <Text style={styles.btnText}>إغلاق</Text>
@@ -1748,7 +1857,7 @@ export default function App() {
         {[
           {title: 'الوضع الداكن', icon: '🌙', isSwitch: true},
           {title: 'بيانات الموظف', icon: '👤', action: () => Alert.alert('بيانات الموظف', `الاسم: ${currentUser?.name}\nالمستخدم: ${currentUser?.username}\nالدور: ${currentUser?.role}`)},
-          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => Alert.alert('تغيير كلمة السر', 'قريباً تفعيل ميزة تغيير كلمة المرور.')},
+          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => { setNewPassword(''); setConfirmNewPassword(''); setChangePasswordVisible(true); }},
           {title: 'قد يهمك', icon: '🛍️', action: () => Alert.alert('قد يهمك', 'لا توجد إشعارات أو عروض جديدة حالياً.')},
           {title: 'تحديث التطبيق', icon: '🔄', action: () => Alert.alert('التحديث', `أنت تستخدم أحدث إصدار (${APP_VERSION})`)},
           {title: 'مشاركة التطبيق', icon: '📤', action: () => Alert.alert('مشاركة', 'تم نسخ رابط التطبيق للحافظة.')},
@@ -1765,6 +1874,23 @@ export default function App() {
             )}
           </TouchableOpacity>
         ))}
+        <Modal visible={changePasswordVisible} transparent animationType="fade" onRequestClose={() => setChangePasswordVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>تغيير كلمة المرور</Text>
+              <Text style={styles.label}>كلمة المرور الجديدة</Text>
+              <TextInput style={styles.input} value={newPassword} onChangeText={setNewPassword} placeholder="أدخل كلمة المرور الجديدة" secureTextEntry autoCapitalize="none" textAlign="right" />
+              <Text style={styles.label}>تأكيد كلمة المرور الجديدة</Text>
+              <TextInput style={styles.input} value={confirmNewPassword} onChangeText={setConfirmNewPassword} placeholder="أعد إدخال كلمة المرور" secureTextEntry autoCapitalize="none" textAlign="right" />
+              <TouchableOpacity style={styles.primaryBtn} disabled={savingPassword} onPress={handleChangePassword}>
+                <Text style={styles.btnText}>{savingPassword ? 'جارٍ الحفظ...' : 'حفظ كلمة المرور الجديدة'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} disabled={savingPassword} onPress={() => { setChangePasswordVisible(false); setNewPassword(''); setConfirmNewPassword(''); }}>
+                <Text style={styles.btnText}>إلغاء</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   };
