@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.73.33';
-const APP_BUILD = '73';
+const APP_VERSION = '1.74.34';
+const APP_BUILD = '74';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -32,6 +32,7 @@ type Vehicle = {
   model: string; payload: string; fuelType: string; engineNo: string; chassisNo: string;
   ownership?: 'شركة' | 'خاصة';
   directManager?: string;
+  directManagerId?: string;
 };
 
 type RequestItem = {
@@ -73,6 +74,15 @@ const money = (n: number) => `${Number(n || 0).toLocaleString()} ريال`;
 const escapeHtml = (s: string) => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;');
+
+// حساب ميثاق2 قد يكون اسمه التقني methaq2 في Supabase، وليس الاسم العربي.
+const isRequestApprover = (user: any) => {
+  const username = String(user?.username || '').trim().toLowerCase().replace(/\s+/g, '');
+  const role = String(user?.role || user?.profile?.role || '').trim().toLowerCase();
+  const extraRoles = Array.isArray(user?.extraRoles) ? user.extraRoles.map((r: any) => String(r).toLowerCase()) : [];
+  return ['ميثاق2', 'ميثاق٢', 'methaq2', 'methaq_2', 'methaq-2'].includes(username) ||
+    extraRoles.includes('request_approver') || extraRoles.includes('system_admin');
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -214,9 +224,13 @@ export default function App() {
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
+      const { data: pData, error: pError } = await supabase.from('profiles').select('id, username, full_name, role, phone, is_active');
+      if (!pError && pData) setManagerProfiles(pData);
+      const profilesForLookup = pData || [];
       const { data: vData, error: vError } = await supabase.from('vehicles').select('*');
       if (!vError && vData) {
         const mappedFleet: Vehicle[] = (vData || []).map((v: any) => {
+          const assignedProfile = profilesForLookup.find((p: any) => String(p.id) === String(v.direct_manager_id || ''));
           const carNo = String(v.car_number || '').trim();
           return {
             id: String(v.id),
@@ -231,7 +245,8 @@ export default function App() {
             engineNo: v.engine_number || '',
             chassisNo: v.chassis_number || '',
             ownership: v.ownership === 'خاصة' ? 'خاصة' : 'شركة',
-            directManager: v.direct_manager || v.directManager || ''
+            directManager: v.direct_manager || v.directManager || assignedProfile?.full_name || assignedProfile?.username || '',
+            directManagerId: v.direct_manager_id ? String(v.direct_manager_id) : ''
           };
         });
         setFleet(mappedFleet);
@@ -266,8 +281,6 @@ export default function App() {
         });
         setRequests(mappedReqs);
       }
-      const { data: pData } = await supabase.from('profiles').select('*');
-      if (pData) setManagerProfiles(pData);
     } catch (e: any) {
       console.log('Supabase Fetch Error:', e?.message || e);
     } finally {
@@ -307,7 +320,10 @@ export default function App() {
       const isAdmin = ['admin', 'administrator', 'manager', 'services_manager', 'direct_manager', 'مسؤول', 'مدير', 'مدير عام', 'مدير الخدمات', 'مسؤول الخدمات'].includes(roleRaw);
       
       if (isAdmin) {
-        setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: user.id, username: profile.username, name: profile.full_name || profile.username, profile });
+        let extraRoles: string[] = [];
+        const { data: roleRows } = await supabase.from('user_roles').select('role').eq('profile_id', user.id);
+        if (roleRows) extraRoles = roleRows.map((row: any) => String(row.role || '').toLowerCase());
+        setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: user.id, username: profile.username, name: profile.full_name || profile.username, profile, extraRoles });
       } else {
         const carNumber = String(profile.username || '');
         const { data: vehicle } = await supabase.from('vehicles').select('*').eq('car_number', carNumber).maybeSingle();
@@ -538,7 +554,7 @@ export default function App() {
       await loadSupabaseData();
       Alert.alert(
         'تم التحديث',
-        currentUser?.username === 'ميثاق2'
+        isRequestApprover(currentUser)
           ? 'تم اعتماد الطلب نهائيًا.'
           : 'تمت الموافقة على الطلب في المرحلة الأولى.'
       );
@@ -611,7 +627,7 @@ export default function App() {
       setFleet((prev: any[]) =>
         prev.map((v: any) =>
           String(v.id) === String(selectedVehicleForAssign.id)
-            ? { ...v, directManager: manager?.full_name || manager?.username }
+            ? { ...v, directManager: manager?.full_name || manager?.username, directManagerId: String(chosenDirectManager) }
             : v
         )
       );
@@ -946,7 +962,7 @@ export default function App() {
     
     const rows = requests.filter(r => {
       if (r.type !== adminRequestTab) return false;
-      const isFinalApprover = currentUser?.username === 'ميثاق2';
+      const isFinalApprover = isRequestApprover(currentUser);
       if (isFinalApprover) {
         // ميثاق يرى الطلبات المحالة للخدمات وكذلك الطلبات المعتمدة نهائياً حتى يتمكن من طباعتها.
         return (
@@ -957,13 +973,16 @@ export default function App() {
       }
       const isPendingDirectApproval =
         !r.directManagerStatus ||
-        r.directManagerStatus === 'تحت المراجعة' ||
-        r.directManagerStatus === 'بانتظار المراجعة' ||
-        r.directManagerStatus === 'قيد المراجعة';
+        ['تحت المراجعة', 'بانتظار المراجعة', 'قيد المراجعة'].includes(r.directManagerStatus);
+      const requestVehicle = fleet.find((v: any) => String(v.id) === String(r.vehicleId));
+      const managerAssigned = String(requestVehicle?.directManagerId || '');
+      const currentProfileId = String(currentUser?.authId || currentUser?.profile?.id || '');
+      const assignedToThisManager = !managerAssigned || managerAssigned === currentProfileId ||
+        String(requestVehicle?.directManager || '').trim() === String(currentUser?.name || '').trim() ||
+        String(requestVehicle?.directManager || '').trim() === String(currentUser?.username || '').trim();
       return (
-        isPendingDirectApproval &&
-        r.status !== 'مرفوض' &&
-        r.status !== 'تمت الموافقة'
+        isPendingDirectApproval && assignedToThisManager &&
+        r.status !== 'مرفوض' && r.status !== 'تمت الموافقة'
       );
     });
 
@@ -996,21 +1015,21 @@ export default function App() {
             <Text style={styles.workflowTitle}>المرحلة: {r.workflow || 'المسؤول المباشر'}</Text>
             {r.imageUri ? <View><Image source={{uri:r.imageUri}} style={styles.requestImage} /></View> : null}
 
-            {(r.type === 'إرسالية صيانة' || r.type === 'إرسالية خدمات بنشر') && currentUser?.username === 'ميثاق2' && r.status !== 'تمت الموافقة' && (
+            {(r.type === 'إرسالية صيانة' || r.type === 'إرسالية خدمات بنشر') && isRequestApprover(currentUser) && r.status !== 'تمت الموافقة' && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#0F766E'}]} onPress={() => openDispatchEditor(r)}>
                   <Text style={styles.btnText}>تعديل الإرسالية وحفظها</Text>
                 </TouchableOpacity>
               </View>
             )}
-            {r.type === 'إرسالية صيانة' && (r.status === 'تمت الموافقة' || currentUser?.username === 'ميثاق2') && (
+            {r.type === 'إرسالية صيانة' && (r.status === 'تمت الموافقة' || isRequestApprover(currentUser)) && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintCarRepair(r)}>
                   <Text style={styles.btnText}>معاينة وطباعة نموذج الإرسالية</Text>
                 </TouchableOpacity>
               </View>
             )}
-            {r.type === 'إرسالية خدمات بنشر' && (r.status === 'تمت الموافقة' || currentUser?.username === 'ميثاق2') && (
+            {r.type === 'إرسالية خدمات بنشر' && (r.status === 'تمت الموافقة' || isRequestApprover(currentUser)) && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintPunctureService(r)}>
                   <Text style={styles.btnText}>معاينة وطباعة نموذج الإرسالية</Text>
@@ -1035,6 +1054,7 @@ export default function App() {
       <View>
         <Text style={styles.sectionTitle}>مسؤولي الطلبات</Text>
         <Text style={styles.helper}>إدارة المسؤولين، صلاحياتهم، ومسارات مسار الاعتمادات.</Text>
+        <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}><Text style={styles.btnText}>تحديث قائمة المسؤولين والسيارات</Text></TouchableOpacity>
         <View style={{flexDirection: 'row-reverse', gap: 6, marginBottom: 15}}>
           {['توزيع المسؤولين', 'قائمة المسؤولين', 'الصلاحيات', 'مسارات الطلبات'].map((tab, idx) => {
             const keys = ['distribute', 'list', 'permissions', 'routes'];
@@ -1048,18 +1068,19 @@ export default function App() {
           })}
         </View>
 
-        {requestManagersTab === 'distribute' && currentUser?.username === 'ميثاق2' && (
+        {requestManagersTab === 'distribute' && isRequestApprover(currentUser) && (
           <ScrollView style={{ flex: 1 }}>
             <View style={styles.adminAssignBox}>
               <Text style={styles.adminAssignTitle}>
                 🛡️ توزيع المسؤولين على السيارات
               </Text>
 
+              {fleet.length === 0 ? <Text style={styles.emptyText}>لا توجد سيارات محمّلة. اضغط تحديث القائمة أو تحقق من صلاحيات جدول vehicles.</Text> : null}
               {fleet.map((v: any) => (
                 <View key={String(v.id)} style={styles.assignRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontWeight: '800', textAlign: 'right' }}>
-                      السيارة رقم {v.car_number ?? v.id}
+                      السيارة رقم {v.carNumber || v.car_number || v.id}
                     </Text>
                     <Text style={{
                       fontSize: 12,
@@ -1077,17 +1098,19 @@ export default function App() {
                       setChosenDirectManager('');
                       const { data, error } = await supabase
                         .from('profiles')
-                        .select('id, username, full_name, role')
+                        .select('id, username, full_name, role, is_active')
                         .eq('is_active', true)
-                        .in('role', ['manager', 'direct_manager', 'admin'])
                         .order('full_name');
 
                       if (error) {
-                        Alert.alert('خطأ', error.message);
+                        Alert.alert('تعذر تحميل المسؤولين', error.message);
                         return;
                       }
-
-                      setAvailableManagers(data || []);
+                      const eligible = (data || []).filter((m: any) =>
+                        ['manager', 'direct_manager', 'admin', 'services_manager', 'مسؤول', 'مدير', 'مدير الخدمات'].includes(String(m.role || '').toLowerCase())
+                      );
+                      setAvailableManagers(eligible);
+                      if (!eligible.length) Alert.alert('لا يوجد مسؤولون', 'لم يُعثر على حسابات مفعّلة بأدوار مسؤول أو مدير في جدول profiles.');
                       setManagerAssignModal(true);
                     }}
                   >
@@ -1104,9 +1127,11 @@ export default function App() {
         {requestManagersTab === 'list' && (
           <View>
             <Text style={[styles.sectionTitle, {fontSize: 16}]}>قائمة المسؤولين الحاليين</Text>
-            {managerProfiles.filter(m => ['manager', 'direct_manager', 'admin', 'services_manager'].includes(m.role)).map(m => (
+            {managerProfiles.filter(m => m.is_active !== false && ['manager', 'direct_manager', 'admin', 'services_manager', 'مسؤول', 'مدير', 'مدير الخدمات'].includes(String(m.role || '').toLowerCase())).length === 0 ? <Text style={styles.emptyText}>لم تُحمّل حسابات المسؤولين. اضغط تحديث القائمة، وإذا استمر الفراغ فتحقق من صلاحية SELECT على profiles.</Text> : null}
+            {managerProfiles.filter(m => m.is_active !== false && ['manager', 'direct_manager', 'admin', 'services_manager', 'مسؤول', 'مدير', 'مدير الخدمات'].includes(String(m.role || '').toLowerCase())).map(m => (
               <View key={m.id} style={styles.card}>
                 <Text style={styles.cardTitle}>{m.full_name || m.username}</Text>
+                <Text style={styles.cardText}>اسم الدخول: {m.username}</Text>
                 <Text style={styles.cardText}>الدور / الصلاحية: {m.role}</Text>
                 <Text style={styles.cardText}>الهاتف: {m.phone || 'غير متوفر'}</Text>
                 <Text style={styles.cardText}>الحالة: {m.is_active !== false ? 'مفعل' : 'موقف'}</Text>
@@ -1118,7 +1143,7 @@ export default function App() {
           <View style={styles.card}>
             <Text style={styles.cardTitle}>تخصيص صلاحيات المسؤولين</Text>
             <Text style={styles.cardText}>يمكنك هنا تحديد أنواع الطلبات التي تصل لكل مسؤول بدقة وتفعيلها أو إيقافها.</Text>
-            {managerProfiles.filter(m => ['manager', 'direct_manager', 'admin'].includes(m.role)).map(m => (
+            {managerProfiles.filter(m => m.is_active !== false && ['manager', 'direct_manager', 'admin', 'services_manager', 'مسؤول', 'مدير', 'مدير الخدمات'].includes(String(m.role || '').toLowerCase())).map(m => (
               <View key={m.id} style={[styles.inlineRow, {justifyContent: 'space-between'}]}>
                 <Text style={{textAlign: 'right', fontWeight: '700'}}>{m.full_name || m.username}</Text>
                 <Text style={{color: COLORS.success, fontWeight: '700'}}>صلاحية كاملة للطلبات</Text>
@@ -1752,7 +1777,7 @@ export default function App() {
       ['permissions', '🔐', 'الصلاحيات'],
       ['reports', '📊', 'التقارير'],
       ['settings', '⚙️', 'الإعدادات'],
-      ...(currentUser.username === 'ميثاق2'
+      ...(isRequestApprover(currentUser)
         ? [['requestManagers', '👥', 'مسؤولي الطلبات']]
         : []),
     ];
@@ -1783,7 +1808,7 @@ export default function App() {
           {adminTab === 'permissions' ? renderPermissions() : null}
           {adminTab === 'reports' ? renderReports(true) : null}
           {adminTab === 'settings' ? renderUserSettings() : null}
-          {adminTab === 'requestManagers' && currentUser.username === 'ميثاق2' ? renderRequestManagersAdmin() : null}
+          {adminTab === 'requestManagers' && isRequestApprover(currentUser) ? renderRequestManagersAdmin() : null}
         </ScrollView>
 
         <Modal
@@ -1796,6 +1821,7 @@ export default function App() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>
                 تعيين مسؤول للسيارة رقم {
+                  selectedVehicleForAssign?.carNumber ??
                   selectedVehicleForAssign?.car_number ??
                   selectedVehicleForAssign?.id
                 }
