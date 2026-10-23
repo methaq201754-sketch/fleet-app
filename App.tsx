@@ -21,8 +21,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.80.40';
-const APP_BUILD = '80';
+const APP_VERSION = '1.81.49';
+const APP_BUILD = '81';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -364,20 +364,52 @@ export default function App() {
   useEffect(() => {
     if (!currentUser?.authId) return;
     loadNotifications();
-    // تسجيل الجهاز لإشعارات الدفع. يتطلب تثبيت expo-notifications في المشروع.
+    // تسجيل رمز إشعارات الدفع مع إظهار أي خطأ بدل تجاهله بصمت.
     const registerPushToken = async () => {
       try {
-        if (Notifications.setNotificationChannelAsync) { await Notifications.setNotificationChannelAsync('fleet-requests', { name: 'طلبات الأسطول', importance: Notifications.AndroidImportance.MAX, sound: 'default' }); }
+        if (Notifications.setNotificationChannelAsync) {
+          await Notifications.setNotificationChannelAsync('fleet-requests', {
+            name: 'طلبات الأسطول',
+            importance: Notifications.AndroidImportance.MAX,
+            sound: 'default',
+          });
+        }
+
         const existing = await Notifications.getPermissionsAsync();
         let status = existing.status;
-        if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
-        if (status !== 'granted') return;
-        const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
-        const tokenResult = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
-        if (tokenResult?.data) {
-          await supabase.from('fleet_push_tokens').upsert({ user_id: currentUser.authId, expo_push_token: tokenResult.data, device_label: 'Android', is_active: true, updated_at: new Date().toISOString() }, { onConflict: 'expo_push_token' });
+        if (status !== 'granted') {
+          const requested = await Notifications.requestPermissionsAsync();
+          status = requested.status;
         }
-      } catch (e: any) { console.log('Push token registration failed:', e?.message || e); }
+        if (status !== 'granted') {
+          console.log('Push token registration skipped: notification permission not granted.');
+          return;
+        }
+
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+        if (!projectId) {
+          throw new Error('معرّف مشروع EAS غير موجود. أضف extra.eas.projectId إلى إعدادات Expo ثم أعد بناء التطبيق.');
+        }
+
+        const tokenResult = await Notifications.getExpoPushTokenAsync({ projectId });
+        const expoPushToken = tokenResult?.data;
+        if (!expoPushToken) throw new Error('لم تُرجع خدمة Expo رمز إشعارات لهذا الجهاز.');
+
+        const { error: saveError } = await supabase.from('fleet_push_tokens').upsert({
+          user_id: currentUser.authId,
+          expo_push_token: expoPushToken,
+          device_label: 'Android',
+          is_active: true,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'expo_push_token' });
+        if (saveError) throw saveError;
+
+        console.log('Push token registered successfully for user:', currentUser.authId);
+      } catch (e: any) {
+        const message = e?.message || String(e || 'خطأ غير معروف');
+        console.log('Push token registration failed:', message);
+        Alert.alert('تعذّر تفعيل إشعارات الهاتف', message);
+      }
     };
     registerPushToken();
     const channel = supabase.channel('fleet-notifications-' + currentUser.authId).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fleet_notifications', filter: 'user_id=eq.' + currentUser.authId }, async payload => {
