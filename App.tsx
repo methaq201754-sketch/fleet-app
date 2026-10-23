@@ -7,6 +7,8 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
 
 // Supabase Integration Setup & Keys
@@ -19,8 +21,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.79.39';
-const APP_BUILD = '79';
+const APP_VERSION = '1.80.40';
+const APP_BUILD = '80';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -88,6 +90,16 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [permissionProfiles, setPermissionProfiles] = useState<any[]>([]);
+  const [permissionRows, setPermissionRows] = useState<any[]>([]);
+  const [permissionBusy, setPermissionBusy] = useState(false);
+  const [accountActionBusy, setAccountActionBusy] = useState<string | null>(null);
+  const [permissionCategory, setPermissionCategory] = useState<'admins' | 'users'>('users');
   
   const [fleet, setFleet] = useState<Vehicle[]>([]);
   const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
@@ -348,6 +360,33 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!currentUser?.authId) return;
+    loadNotifications();
+    // تسجيل الجهاز لإشعارات الدفع. يتطلب تثبيت expo-notifications في المشروع.
+    const registerPushToken = async () => {
+      try {
+        if (Notifications.setNotificationChannelAsync) { await Notifications.setNotificationChannelAsync('fleet-requests', { name: 'طلبات الأسطول', importance: Notifications.AndroidImportance.MAX, sound: 'default' }); }
+        const existing = await Notifications.getPermissionsAsync();
+        let status = existing.status;
+        if (status !== 'granted') status = (await Notifications.requestPermissionsAsync()).status;
+        if (status !== 'granted') return;
+        const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
+        const tokenResult = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+        if (tokenResult?.data) {
+          await supabase.from('fleet_push_tokens').upsert({ user_id: currentUser.authId, expo_push_token: tokenResult.data, device_label: 'Android', is_active: true, updated_at: new Date().toISOString() }, { onConflict: 'expo_push_token' });
+        }
+      } catch (e: any) { console.log('Push token registration failed:', e?.message || e); }
+    };
+    registerPushToken();
+    const channel = supabase.channel('fleet-notifications-' + currentUser.authId).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fleet_notifications', filter: 'user_id=eq.' + currentUser.authId }, async payload => {
+      const n: any = payload.new; setNotifications(prev => [n, ...prev].slice(0,30));
+      try { await Notifications.scheduleNotificationAsync({ content: { title: n.title || 'إشعار جديد', body: n.body || n.message || 'لديك تحديث جديد.', data: { notificationId: n.id } }, trigger: null }); } catch {}
+      Alert.alert(n.title || 'إشعار جديد', n.body || n.message || 'لديك تحديث جديد.');
+    }).subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [currentUser?.authId]);
 
   const fetchUserProfileAndRestore = async (user: any) => {
     try {
@@ -1854,8 +1893,80 @@ export default function App() {
     );
   };
 
+  const changeOwnPassword = async () => {
+    if (newPassword.length < 8) { Alert.alert('كلمة المرور قصيرة', 'اكتب كلمة مرور من 8 أحرف على الأقل.'); return; }
+    if (newPassword !== confirmNewPassword) { Alert.alert('عدم تطابق', 'كلمتا المرور غير متطابقتين.'); return; }
+    try {
+      setSavingPassword(true);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setPasswordModalVisible(false); setNewPassword(''); setConfirmNewPassword('');
+      Alert.alert('تم التغيير', 'تم تغيير كلمة مرور حسابك بنجاح.');
+    } catch (e: any) { Alert.alert('تعذر تغيير كلمة المرور', e?.message || 'تحقق من الاتصال ثم حاول مجدداً.'); }
+    finally { setSavingPassword(false); }
+  };
+
+  const loadNotifications = async () => {
+    const uid = currentUser?.authId;
+    if (!uid) return;
+    const { data, error } = await supabase.from('fleet_notifications').select('*').eq('user_id', uid).order('created_at', { ascending: false }).limit(30);
+    if (!error && data) setNotifications(data);
+  };
+
+  const loadPermissionAdminData = async () => {
+    if (!isRequestApprover(currentUser)) return;
+    setPermissionBusy(true);
+    try {
+      const { data: profiles, error: pErr } = await supabase.from('profiles').select('id, username, full_name, role, is_active').order('username');
+      if (pErr) throw pErr;
+      const { data: rows, error: rErr } = await supabase.from('fleet_user_permissions').select('user_id, permission_key, enabled, updated_at');
+      if (rErr) throw rErr;
+      setPermissionProfiles(profiles || []); setPermissionRows(rows || []);
+    } catch (e: any) { Alert.alert('تعذر تحميل الصلاحيات', e?.message || 'تحقق من سياسات جدول الصلاحيات.'); }
+    finally { setPermissionBusy(false); }
+  };
+
+  const savePermission = async (profileId: string, key: string, enabled: boolean) => {
+    try {
+      const { error } = await supabase.from('fleet_user_permissions').upsert({ user_id: profileId, permission_key: key, enabled, updated_by: currentUser?.authId, updated_at: new Date().toISOString() }, { onConflict: 'user_id,permission_key' });
+      if (error) throw error;
+      setPermissionRows(prev => [...prev.filter(x => !(x.user_id === profileId && x.permission_key === key)), { user_id: profileId, permission_key: key, enabled }]);
+    } catch (e: any) { Alert.alert('تعذر حفظ الصلاحية', e?.message || 'تحقق من سياسات قاعدة البيانات.'); }
+  };
+
+  const renderPermissionAdmin = () => {
+    const adminKeys: [string,string][] = [
+      ['approve_fuel','اعتماد طلبات الوقود'],['approve_oils','اعتماد طلبات الزيوت'],['approve_batteries','اعتماد طلبات البطاريات'],['approve_parts','اعتماد قطع الغيار'],['approve_maintenance','اعتماد الصيانة'],['approve_tires','اعتماد الإطارات'],['approve_puncture','اعتماد البنشر'],['change_user_password','إعادة تعيين كلمة مرور مستخدم'],['disable_user','تعطيل حساب مستخدم'],['edit_any_request','تعديل أي طلب'],['edit_codings','إدارة التكويدات'],['edit_prices','إدارة الأسعار'],['add_vehicle','إضافة سيارة'],['edit_vehicle','تعديل سيارة'],['delete_vehicle','حذف سيارة'],['assign_driver_vehicle','ربط السائق بالسيارة'],['manage_user_permissions','إدارة صلاحيات المستخدمين'],['manage_admin_permissions','إدارة صلاحيات المسؤولين'],['view_reports','عرض التقارير']
+    ];
+    const userKeys: [string,string][] = [
+      ['change_own_password','تغيير كلمة المرور الشخصية'],['edit_own_pending_request','تعديل الطلب قبل موافقة المسؤول المباشر'],['request_fuel','طلب وقود'],['request_oils','طلب زيوت'],['request_batteries','طلب بطاريات'],['request_parts','طلب قطع غيار'],['request_maintenance','طلب صيانة'],['request_tires','طلب إطارات'],['request_puncture','طلب بنشر']
+    ];
+    const keys = permissionCategory === 'admins' ? adminKeys : userKeys;
+    const people = permissionProfiles.filter(p => permissionCategory === 'admins' ? ['admin','manager','services_manager','direct_manager','request_approver','system_admin'].includes(String(p.role||'').toLowerCase()) : !['admin','manager','services_manager','direct_manager','request_approver','system_admin'].includes(String(p.role||'').toLowerCase()));
+    return <View>
+      <Text style={styles.sectionTitle}>إدارة الصلاحيات</Text>
+      <Text style={styles.helper}>تُحفظ الخيارات في قاعدة البيانات. حساب ميثاق2 يملك إدارة الصلاحيات.</Text>
+      <View style={{flexDirection:'row-reverse',gap:8,marginBottom:12}}>
+        <TouchableOpacity style={[styles.secondaryBtn,{flex:1,backgroundColor:permissionCategory==='admins'?COLORS.primary:'#64748B'}]} onPress={()=>setPermissionCategory('admins')}><Text style={styles.btnText}>صلاحيات المسؤولين</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.secondaryBtn,{flex:1,backgroundColor:permissionCategory==='users'?COLORS.primary:'#64748B'}]} onPress={()=>setPermissionCategory('users')}><Text style={styles.btnText}>صلاحيات المستخدمين</Text></TouchableOpacity>
+      </View>
+      <TouchableOpacity style={styles.primaryBtn} onPress={loadPermissionAdminData}><Text style={styles.btnText}>{permissionBusy?'جارٍ التحديث…':'تحميل المستخدمين والصلاحيات'}</Text></TouchableOpacity>
+      {people.map(person => <View key={person.id} style={styles.card}>
+        <Text style={styles.cardTitle}>{person.full_name || person.username} ({person.username})</Text>
+        <Text style={styles.cardText}>الدور: {person.role || 'غير محدد'} | {person.is_active ? 'نشط' : 'معطل'}</Text>
+        {<TouchableOpacity disabled={accountActionBusy === person.id} style={[styles.secondaryBtn,{backgroundColor: person.is_active ? COLORS.danger : COLORS.success, marginBottom:10}]} onPress={() => Alert.alert(person.is_active ? 'تعطيل الحساب' : 'تفعيل الحساب', `هل تريد ${person.is_active ? 'تعطيل' : 'تفعيل'} حساب ${person.full_name || person.username}؟`, [{text:'إلغاء',style:'cancel'},{text:'تأكيد',style:'destructive',onPress:async()=>{ try { setAccountActionBusy(person.id); const {data,error}=await supabase.functions.invoke('manage-user-account',{body:{target_user_id:person.id,action:person.is_active?'disable':'enable'}}); if(error) throw error; if(data?.error) throw new Error(data.error); setPermissionProfiles(prev=>prev.map(p=>p.id===person.id?{...p,is_active:!person.is_active}:p)); Alert.alert('تم',`تم ${person.is_active?'تعطيل':'تفعيل'} الحساب.`); } catch(e:any){Alert.alert('تعذر تنفيذ العملية',e?.message||'تأكد من نشر دالة manage-user-account وصلاحياتها.');} finally {setAccountActionBusy(null);} }}]}><Text style={styles.btnText}>{accountActionBusy===person.id?'جارٍ التنفيذ…':person.is_active?'تعطيل الحساب':'تفعيل الحساب'}</Text></TouchableOpacity>}
+        {keys.map(([key,label]) => {
+          const row = permissionRows.find(x => x.user_id === person.id && x.permission_key === key);
+          return <View key={key} style={styles.switchRow}><Switch value={!!row?.enabled} onValueChange={value=>savePermission(person.id,key,value)} /><Text style={styles.switchLabel}>{label}</Text></View>;
+        })}
+      </View>)}
+      {!people.length && <Text style={styles.emptyText}>اضغط «تحميل المستخدمين والصلاحيات» لعرض الحسابات.</Text>}
+    </View>;
+  };
+
   const renderUserSettings = () => {
     return (
+      <>
       <View style={{backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden'}}>
         <View style={{backgroundColor: COLORS.primary, padding: 25, alignItems: 'center'}}>
           <Image source={{uri: currentUser?.profile?.avatar_url || 'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y'}} style={{width: 80, height: 80, borderRadius: 40, borderWidth: 3, borderColor: '#fff', marginBottom: 10}} />
@@ -1864,8 +1975,8 @@ export default function App() {
         {[
           {title: 'الوضع الداكن', icon: '🌙', isSwitch: true},
           {title: 'بيانات الموظف', icon: '👤', action: () => Alert.alert('بيانات الموظف', `الاسم: ${currentUser?.name}\nالمستخدم: ${currentUser?.username}\nالدور: ${currentUser?.role}`)},
-          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => Alert.alert('تغيير كلمة السر', 'قريباً تفعيل ميزة تغيير كلمة المرور.')},
-          {title: 'قد يهمك', icon: '🛍️', action: () => Alert.alert('قد يهمك', 'لا توجد إشعارات أو عروض جديدة حالياً.')},
+          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => setPasswordModalVisible(true)},
+          {title: 'الإشعارات', icon: '🔔', action: async () => { await loadNotifications(); Alert.alert('الإشعارات', notifications.length ? notifications.slice(0,8).map(n => `${n.title || 'إشعار'}\n${n.body || n.message || ''}`).join('\n\n') : 'لا توجد إشعارات محملة. افتح هذا الخيار مرة أخرى بعد تحديث القائمة.'); }},
           {title: 'تحديث التطبيق', icon: '🔄', action: () => Alert.alert('التحديث', `أنت تستخدم أحدث إصدار (${APP_VERSION})`)},
           {title: 'مشاركة التطبيق', icon: '📤', action: () => Alert.alert('مشاركة', 'تم نسخ رابط التطبيق للحافظة.')},
           {title: 'حول التطبيق', icon: 'ℹ️', action: () => Alert.alert('حول التطبيق', 'نظام إدارة الأسطول المتقدم - الإصدار ' + APP_VERSION)},
@@ -1882,6 +1993,16 @@ export default function App() {
           </TouchableOpacity>
         ))}
       </View>
+      <Modal visible={passwordModalVisible} transparent animationType="slide" onRequestClose={() => setPasswordModalVisible(false)}>
+        <View style={styles.modalOverlay}><View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>تغيير كلمة المرور</Text>
+          <TextInput style={styles.input} value={newPassword} onChangeText={setNewPassword} secureTextEntry placeholder="كلمة المرور الجديدة" textAlign="right" />
+          <TextInput style={styles.input} value={confirmNewPassword} onChangeText={setConfirmNewPassword} secureTextEntry placeholder="تأكيد كلمة المرور الجديدة" textAlign="right" />
+          <TouchableOpacity style={styles.primaryBtn} disabled={savingPassword} onPress={changeOwnPassword}><Text style={styles.btnText}>{savingPassword ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPasswordModalVisible(false)}><Text style={styles.btnText}>إلغاء</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
+      </>
     );
   };
 
@@ -1896,7 +2017,7 @@ export default function App() {
               <Text style={styles.modalTitle}>طلب إرسالية صيانة وخدمات</Text>
               <TouchableOpacity onPress={() => setMaintenanceServiceSubModal(null)}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity>
             </View>
-            <ScrollView style={styles.requestFormScroll} contentContainerStyle={styles.requestFormContent}>
+            <ScrollView style={styles.requestFormScroll} contentContainerStyle={[styles.requestFormContent,{paddingBottom:30}]} keyboardShouldPersistTaps="handled">
               <Text style={styles.sectionTitle}>اختر نوع الإرسالية:</Text>
               <TouchableOpacity style={styles.serviceCard} onPress={() => { setMaintenanceServiceSubModal(null); setServiceTypeModal('إرسالية صيانة'); }}>
                 <View style={styles.serviceIcon}><Text style={{fontSize:22}}>🛠️</Text></View>
@@ -2030,7 +2151,7 @@ export default function App() {
           {adminTab === 'fleet' ? renderFleet() : null}
           {adminTab === 'drivers' ? renderDrivers() : null}
           {adminTab === 'assignments' ? renderAssignments() : null}
-          {adminTab === 'permissions' ? renderPermissions() : null}
+          {adminTab === 'permissions' ? (isRequestApprover(currentUser) ? renderPermissionAdmin() : renderPermissions()) : null}
           {adminTab === 'reports' ? renderReports(true) : null}
           {adminTab === 'settings' ? renderUserSettings() : null}
           {adminTab === 'requestManagers' && isRequestApprover(currentUser) ? renderRequestManagersAdmin() : null}
