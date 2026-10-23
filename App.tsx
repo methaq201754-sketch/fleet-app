@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.76.36';
-const APP_BUILD = '76';
+const APP_VERSION = '1.77.37';
+const APP_BUILD = '77';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -114,11 +114,6 @@ export default function App() {
   
   const [requestManagersTab, setRequestManagersTab] = useState('distribute');
   const [managerProfiles, setManagerProfiles] = useState<any[]>([]);
-  const [driverProfiles, setDriverProfiles] = useState<any[]>([]);
-  const [changePasswordVisible, setChangePasswordVisible] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [savingPassword, setSavingPassword] = useState(false);
   const [workflowRoutes, setWorkflowRoutes] = useState<string[]>(['المسؤول المباشر', 'الخدمات الإدارية', 'المسؤول النهائي']);
   const [newRouteName, setNewRouteName] = useState('');
   const [userTab, setUserTab] = useState('service');
@@ -141,7 +136,6 @@ export default function App() {
   const [dispatchEditForm, setDispatchEditForm] = useState({ workshop: '', engineer: '', faultType: '', requiredWork: '', client: '', serviceDescription: '', notes: '' });
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [newItem, setNewItem] = useState('');
-  const [editingCodingItem, setEditingCodingItem] = useState<string | null>(null);
   
   const [selectedStation, setSelectedStation] = useState(stations[0]);
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
@@ -198,6 +192,10 @@ export default function App() {
   const [fleetCategory, setFleetCategory] = useState('جميع السيارات');
   const [vehicleModalVisible, setVehicleModalVisible] = useState(false);
   const [vehicleEditId, setVehicleEditId] = useState<string | null>(null);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [driverModalVisible, setDriverModalVisible] = useState(false);
+  const [driverEditId, setDriverEditId] = useState<number | null>(null);
+  const [driverForm, setDriverForm] = useState({ driver_name: '', plate_number: '', phone: '', status: 'active' });
   const [vehicleForm, setVehicleForm] = useState<Vehicle>({
     id: '', carNumber: '', name: '', driver: '', status: 'في الخدمة', type: '', model: '',
     payload: '', fuelType: 'ديزل', engineNo: '', chassisNo: '', ownership: 'شركة'
@@ -227,74 +225,31 @@ export default function App() {
     }
   });
 
-  const loadAppCodings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('app_codings')
-        .select('id, category, item_name, price, is_active, sort_order')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
-        .order('item_name', { ascending: true });
-
-      if (error) throw error;
-      const rows = data || [];
-      const itemsFor = (category: string) => rows
-        .filter((row: any) => row.category === category)
-        .map((row: any) => String(row.item_name || '').trim())
-        .filter(Boolean);
-
-      const categorySetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-        'المحروقات': setFuelTypes,
-        'الزيوت': setOils,
-        'البطاريات': setBatteries,
-        'قطع الغيار': setParts,
-        'الإطارات': setTires,
-        'المحطات': setStations,
-        'الصيانة': setMaintenanceItems,
-        'الورش': setWorkshops,
-        'العملاء': setClients,
-        'المهندسين': setEngineers,
-        'مالك السيارة': setOwnershipTypes,
-        'نوع المهمة': setTripTypes,
-        'الوجهة/المنطقة': setTripDestinations,
-      };
-      Object.entries(categorySetters).forEach(([category, setter]) => {
-        const items = itemsFor(category);
-        setter(items);
-      });
-
-      const loadedPrices: Record<string, number> = {};
-      rows.filter((row: any) => String(row.category || '').startsWith('تسعير '))
-        .forEach((row: any) => {
-          loadedPrices[String(row.item_name)] = row.price == null ? 0 : Number(row.price) || 0;
-        });
-      if (Object.keys(loadedPrices).length) setPrices(loadedPrices);
-    } catch (e: any) {
-      console.log('Load app codings error:', e?.message || e);
-    }
-  };
-
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
       const { data: pData, error: pError } = await supabase.from('profiles').select('id, username, full_name, role, phone, is_active');
-      if (!pError && pData) {
-        setManagerProfiles(pData);
-        setDriverProfiles(pData.filter((p: any) =>
-          p.is_active !== false && ['driver', 'سائق', 'سائق سيارة'].includes(String(p.role || '').trim().toLowerCase())
-        ));
-      }
+      if (!pError && pData) setManagerProfiles(pData);
       const profilesForLookup = pData || [];
-      const { data: vData, error: vError } = await supabase.from('vehicles').select('*');
-      if (!vError && vData) {
-        const mappedFleet: Vehicle[] = (vData || []).map((v: any) => {
+      const { data: dData, error: dError } = await supabase
+        .from('drivers')
+        .select('id, driver_name, plate_number, phone, status, created_at')
+        .order('driver_name', { ascending: true });
+      if (!dError && dData) setDrivers(dData);
+
+      const { data: vData, error: vError } = await supabase.from('vehicles').select('*').order('id', { ascending: true });
+      if (vError) throw vError;
+      if (vData) {
+        const driverRows = dData || [];
+        const mappedFleet: Vehicle[] = vData.map((v: any) => {
           const assignedProfile = profilesForLookup.find((p: any) => String(p.id) === String(v.direct_manager_id || ''));
           const carNo = String(v.car_number || '').trim();
+          const matchedDriver = driverRows.find((d: any) => String(d.plate_number || '').trim() === carNo);
           return {
             id: String(v.id),
             carNumber: carNo,
             name: v.car_name || `سيارة ${carNo}`,
-            driver: v.driver || '',
+            driver: matchedDriver?.driver_name || '',
             status: v.status || 'في الخدمة',
             type: v.brand || 'سيارة',
             model: String(v.model || v.manufacturing_year || ''),
@@ -308,33 +263,6 @@ export default function App() {
           };
         });
         setFleet(mappedFleet);
-      }
-      // Load persisted vehicle-driver assignments from the dedicated relation table.
-      const { data: assignmentRows, error: assignmentError } = await supabase
-        .from('vehicle_driver_assignments')
-        .select('id, vehicle_id, driver_id, start_date, end_date');
-      if (assignmentError) {
-        console.log('Load vehicle-driver assignments error:', assignmentError.message);
-      } else {
-        const profileRows = pData || [];
-        const vehicleRows = vData || [];
-        const mappedAssignments: Assignment[] = (assignmentRows || []).map((row: any) => {
-          const profile = profileRows.find((p: any) => String(p.id) === String(row.driver_id));
-          const vehicle = vehicleRows.find((v: any) => String(v.id) === String(row.vehicle_id));
-          return {
-            id: String(row.id),
-            driver: String(profile?.full_name || profile?.username || 'سائق غير معروف'),
-            driverId: String(row.driver_id || ''),
-            vehicleId: String(vehicle?.car_number || row.vehicle_id || ''),
-            startDate: String(row.start_date || ''),
-            endDate: row.end_date ? String(row.end_date) : 'مفتوح',
-            notes: ''
-          };
-        });
-        setAssignments(mappedAssignments.sort((a, b) => b.startDate.localeCompare(a.startDate)));
-        const activeByVehicle = new Map<string, Assignment>();
-        mappedAssignments.forEach((a) => { if (a.endDate === 'مفتوح') activeByVehicle.set(a.vehicleId, a); });
-        setFleet((prev) => prev.map((v) => ({ ...v, driver: activeByVehicle.get(v.carNumber)?.driver || '' })));
       }
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
       if (!rError && rData) {
@@ -377,14 +305,13 @@ export default function App() {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
         await fetchUserProfileAndRestore(session.user);
-        await loadAppCodings();
+        await loadSupabaseData();
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         await fetchUserProfileAndRestore(session.user);
-        await loadAppCodings();
       } else {
         setCurrentUser(null);
       }
@@ -404,7 +331,7 @@ export default function App() {
       
       if (!profile) return;
       const roleRaw = String(profile.role || '').toLowerCase();
-      const isAdmin = ['admin', 'administrator', 'manager', 'services_manager', 'direct_manager', 'مسؤول', 'مدير', 'مدير عام', 'مدير الخدمات', 'مسؤول الخدمات'].includes(roleRaw);
+      const isAdmin = ['admin', 'administrator', 'manager', 'services_manager', 'direct_manager', 'request_approver', 'system_admin', 'مسؤول', 'مدير', 'مدير عام', 'مدير الخدمات', 'مسؤول الخدمات'].includes(roleRaw);
       
       if (isAdmin) {
         let extraRoles: string[] = [];
@@ -445,11 +372,10 @@ export default function App() {
     return rows.length ? Number(rows[0].currOdo) || 0 : 0;
   };
 
-  const driverNames = useMemo(() => {
-    const fromProfiles = driverProfiles.map((p: any) => String(p.full_name || p.username || '').trim()).filter(Boolean);
-    const names = fromProfiles.length ? fromProfiles : fleet.map(v => String(v.driver || '').trim()).filter(Boolean);
-    return Array.from(new Set(names));
-  }, [driverProfiles, fleet]);
+  const driverNames = useMemo(
+    () => Array.from(new Set(fleet.map(v => v.driver).filter(Boolean))),
+    [fleet]
+  );
 
   const assignmentVehicle = fleet.find(v => v.carNumber === assignmentForm.vehicleId.trim());
 
@@ -481,40 +407,12 @@ export default function App() {
         return;
       }
       await fetchUserProfileAndRestore(data.user);
+      await loadSupabaseData();
       setUsername(''); setPassword('');
     } catch (e: any) {
       Alert.alert('خطأ في تسجيل الدخول', e?.message || 'تعذر الاتصال بخدمة تسجيل الدخول.');
     } finally {
       setLoadingDb(false);
-    }
-  };
-
-  const handleChangePassword = async () => {
-    const nextPassword = newPassword;
-    if (!currentUser?.authId) {
-      Alert.alert('تعذر تغيير كلمة المرور', 'لم يتم العثور على جلسة دخول صالحة. سجّل الخروج ثم ادخل مجدداً.');
-      return;
-    }
-    if (nextPassword.length < 6) {
-      Alert.alert('كلمة المرور غير صالحة', 'يجب أن تتكون كلمة المرور الجديدة من 6 أحرف أو أرقام على الأقل.');
-      return;
-    }
-    if (nextPassword !== confirmNewPassword) {
-      Alert.alert('عدم تطابق', 'تأكيد كلمة المرور لا يطابق كلمة المرور الجديدة.');
-      return;
-    }
-    try {
-      setSavingPassword(true);
-      const { error } = await supabase.auth.updateUser({ password: nextPassword });
-      if (error) throw error;
-      setChangePasswordVisible(false);
-      setNewPassword('');
-      setConfirmNewPassword('');
-      Alert.alert('تم بنجاح', 'تم تغيير كلمة المرور. استخدم كلمة المرور الجديدة في تسجيل الدخول القادم.');
-    } catch (e: any) {
-      Alert.alert('تعذر تغيير كلمة المرور', e?.message || 'حدث خطأ أثناء حفظ كلمة المرور. تحقق من الاتصال ثم حاول مجدداً.');
-    } finally {
-      setSavingPassword(false);
     }
   };
 
@@ -949,77 +847,21 @@ export default function App() {
     }
   };
 
-  const saveCodingItem = async () => {
-    const itemName = newItem.trim();
-    if (!codingModal || !itemName) return;
+  const saveCodingItem = () => {
+    if (!codingModal || !newItem.trim()) return;
     const setter = codingSetters[codingModal];
     if (!setter) return;
-    if (codingMap[codingModal]?.some(item => item.trim() === itemName && item !== editingCodingItem)) {
-      Alert.alert('تنبيه', 'هذا العنصر موجود بالفعل.');
-      return;
-    }
-    try {
-      if (editingCodingItem) {
-        const oldName = editingCodingItem;
-        const { error } = await supabase.from('app_codings').update({
-          item_name: itemName,
-          updated_at: new Date().toISOString(),
-        }).eq('category', codingModal).eq('item_name', oldName);
-        if (error) throw error;
-        setter(prev => prev.map(item => item === oldName ? itemName : item));
-        setEditingCodingItem(null);
-        setNewItem('');
-        Alert.alert('تم التعديل', 'تم حفظ تعديل التكويد في قاعدة البيانات.');
-      } else {
-        const { error } = await supabase.from('app_codings').insert({
-          category: codingModal,
-          item_name: itemName,
-          is_active: true,
-          sort_order: codingMap[codingModal].length + 1,
-        });
-        if (error) throw error;
-        setter(prev => [...prev, itemName]);
-        setNewItem('');
-        Alert.alert('تم الحفظ', 'تم حفظ التكويد في قاعدة البيانات.');
-      }
-    } catch (e: any) {
-      Alert.alert(editingCodingItem ? 'تعذر التعديل' : 'تعذر الحفظ', e?.message || 'لم يتم حفظ التغيير في قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
-    }
+    setter(prev => [...prev, newItem.trim()]);
+    setNewItem('');
   };
 
   const deleteCodingItem = (key: string, index: number) => {
     const setter = codingSetters[key];
-    const itemName = codingMap[key]?.[index];
-    if (!setter || !itemName) return;
-    Alert.alert('تأكيد الحذف', `هل تريد حذف التكويد «${itemName}»؟`, [
+    if (!setter) return;
+    Alert.alert('تأكيد الحذف', 'هل تريد حذف هذا التكويد؟', [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: async () => {
-        try {
-          const { error } = await supabase.from('app_codings')
-            .delete().eq('category', key).eq('item_name', itemName);
-          if (error) throw error;
-          setter(prev => prev.filter(item => item !== itemName));
-          Alert.alert('تم الحذف', 'تم حذف التكويد من قاعدة البيانات.');
-        } catch (e: any) {
-          Alert.alert('تعذر الحذف', e?.message || 'لم يتم حذف التكويد من قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
-        }
-      }}
+      { text: 'حذف', style: 'destructive', onPress: () => setter(prev => prev.filter((_, i) => i !== index)) }
     ]);
-  };
-
-  const saveCodingPrice = async (category: string, itemName: string, price: number) => {
-    try {
-      const { error } = await supabase.from('app_codings').upsert({
-        category,
-        item_name: itemName,
-        price: Math.max(0, Number(price) || 0),
-        is_active: true,
-      }, { onConflict: 'category,item_name' });
-      if (error) throw error;
-    } catch (e: any) {
-      Alert.alert('تعذر حفظ السعر', e?.message || 'لم يتم حفظ السعر في قاعدة البيانات. تحقق من صلاحيات الحساب والاتصال.');
-      await loadAppCodings();
-    }
   };
 
   const setVehiclePermission = (vehicleId: string, key: keyof PermissionSet, value: boolean) => {
@@ -1118,8 +960,7 @@ export default function App() {
                   <View key={item} style={styles.priceRow}>
                     <Text style={[styles.cardText,{flex:1}]}>{item}</Text>
                     <TextInput style={styles.priceInput} keyboardType="numeric" value={String(prices[item] ?? 0)}
-                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))}
-                      onEndEditing={() => saveCodingPrice(pricingCategoryModal || '', item, prices[item] ?? 0)} />
+                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))} />
                   </View>
                 ))}
               </ScrollView>
@@ -1386,20 +1227,51 @@ export default function App() {
         Alert.alert('تنبيه', 'رقم السيارة واسم السيارة والنوع حقول مطلوبة.'); return;
       }
       const row = {
-        car_number: vehicleForm.carNumber.trim(), car_name: vehicleForm.name.trim(), brand: vehicleForm.type || null,
-        manufacturing_year: Number(vehicleForm.model) || null, model: vehicleForm.model || null,
-        load_capacity: vehicleForm.payload || null, engine_number: vehicleForm.engineNo || null,
-        chassis_number: vehicleForm.chassisNo || null
+        car_number: vehicleForm.carNumber.trim(),
+        car_name: vehicleForm.name.trim(),
+        brand: vehicleForm.type.trim() || null,
+        manufacturing_year: Number(vehicleForm.model) || null,
+        model: vehicleForm.model.trim() || null,
+        load_capacity: vehicleForm.payload.trim() || null,
+        engine_number: vehicleForm.engineNo.trim() || null,
+        chassis_number: vehicleForm.chassisNo.trim() || null,
+        fuel_type: vehicleForm.fuelType || 'ديزل',
+        ownership: vehicleForm.ownership || 'شركة',
+        status: vehicleForm.status || 'في الخدمة'
       };
       try {
-        const result = vehicleEditId
-          ? await supabase.from('vehicles').update(row).eq('id', vehicleEditId)
-          : await supabase.from('vehicles').insert(row);
+        let result: any;
+        if (vehicleEditId) {
+          result = await supabase.from('vehicles').update(row).eq('id', Number(vehicleEditId));
+        } else {
+          // vehicles.id is BIGINT without an automatic default in the current schema.
+          const { data: lastRows, error: lastError } = await supabase
+            .from('vehicles').select('id').order('id', { ascending: false }).limit(1);
+          if (lastError) throw lastError;
+          const nextId = Number(lastRows?.[0]?.id || 0) + 1;
+          result = await supabase.from('vehicles').insert({ id: nextId, ...row });
+        }
         if (result.error) throw result.error;
         setVehicleModalVisible(false);
-        Alert.alert('تم الحفظ', 'تم حفظ بيانات السيارة في قاعدة البيانات بنجاح.');
-        loadSupabaseData();
+        Alert.alert('تم الحفظ', 'تم حفظ بيانات السيارة في جدول vehicles.');
+        await loadSupabaseData();
       } catch (e: any) { Alert.alert('تعذر حفظ السيارة', e?.message || 'تحقق من صلاحيات جدول vehicles.'); }
+    };
+
+    const deleteVehicle = (v: Vehicle) => {
+      Alert.alert('تأكيد حذف السيارة', `هل تريد حذف السيارة رقم ${v.carNumber}؟ قد تمنع السجلات المرتبطة حذفها.`, [
+        { text: 'إلغاء', style: 'cancel' },
+        { text: 'حذف', style: 'destructive', onPress: async () => {
+          try {
+            const { error } = await supabase.from('vehicles').delete().eq('id', Number(v.id));
+            if (error) throw error;
+            Alert.alert('تم الحذف', 'حُذفت السيارة من قاعدة البيانات.');
+            await loadSupabaseData();
+          } catch (e: any) {
+            Alert.alert('تعذر حذف السيارة', e?.message || 'قد توجد طلبات أو تعيينات مرتبطة بهذه السيارة.');
+          }
+        }}
+      ]);
     };
 
     return (
@@ -1427,9 +1299,13 @@ export default function App() {
             <Text style={styles.cardTitle}>{v.name}</Text>
             <Text style={styles.cardText}>السائق: {v.driver}</Text>
             <Text style={styles.cardText}>الموديل: {v.model} | السعة: {v.payload}</Text>
+            <Text style={styles.cardText}>الملكية: {v.ownership || 'شركة'} | الوقود: {v.fuelType || 'ديزل'}</Text>
             <View style={styles.actionRow}>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#64748B' }]} onPress={() => openEditVehicle(v)}>
                 <Text style={styles.btnText}>تعديل</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.danger }]} onPress={() => deleteVehicle(v)}>
+                <Text style={styles.btnText}>حذف</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1441,8 +1317,8 @@ export default function App() {
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>{vehicleEditId ? 'تعديل سيارة' : 'إضافة سيارة'}</Text>
                 {[
-                  ['carNumber','رقم السيارة (car_number)'], ['name','اسم السيارة'], ['type','فئة النقل'],
-                  ['model','الموديل'], ['payload','الحمولة / السعة'], ['engineNo','رقم المحرك'], ['chassisNo','رقم الشاسيه']
+                  ['carNumber','رقم السيارة (car_number)'], ['name','اسم السيارة'], ['type','الماركة / النوع'],
+                  ['model','الموديل أو سنة الصنع'], ['payload','الحمولة / السعة'], ['engineNo','رقم المحرك'], ['chassisNo','رقم الشاسيه']
                 ].map(([key,label]) => (
                   <View key={key}>
                     <Text style={styles.label}>{label}</Text>
@@ -1453,8 +1329,169 @@ export default function App() {
                     />
                   </View>
                 ))}
+                <Text style={styles.label}>نوع الملكية</Text>
+                <View style={styles.choiceRow}>
+                  {['شركة', 'خاصة'].map(value => (
+                    <TouchableOpacity key={value} style={[styles.choice, vehicleForm.ownership === value && styles.choiceActive]}
+                      onPress={() => setVehicleForm(p => ({ ...p, ownership: value as any }))}>
+                      <Text style={[styles.choiceText, vehicleForm.ownership === value && styles.choiceTextActive]}>{value}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.label}>الحالة</Text>
+                <View style={styles.choiceRow}>
+                  {['في الخدمة', 'موقف'].map(value => (
+                    <TouchableOpacity key={value} style={[styles.choice, vehicleForm.status === value && styles.choiceActive]}
+                      onPress={() => setVehicleForm(p => ({ ...p, status: value }))}>
+                      <Text style={[styles.choiceText, vehicleForm.status === value && styles.choiceTextActive]}>{value}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <Text style={styles.label}>نوع الوقود</Text>
+                <View style={styles.choiceRow}>
+                  {['ديزل', 'بترول'].map(value => (
+                    <TouchableOpacity key={value} style={[styles.choice, vehicleForm.fuelType === value && styles.choiceActive]}
+                      onPress={() => setVehicleForm(p => ({ ...p, fuelType: value }))}>
+                      <Text style={[styles.choiceText, vehicleForm.fuelType === value && styles.choiceTextActive]}>{value}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 <TouchableOpacity style={styles.primaryBtn} onPress={saveVehicle}><Text style={styles.btnText}>حفظ السيارة</Text></TouchableOpacity>
                 <TouchableOpacity style={styles.secondaryBtn} onPress={() => setVehicleModalVisible(false)}><Text style={styles.btnText}>إلغاء</Text></TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </Modal>
+      </View>
+    );
+  };
+
+  const renderDrivers = () => {
+    const openAddDriver = () => {
+      setDriverEditId(null);
+      setDriverForm({ driver_name: '', plate_number: '', phone: '', status: 'active' });
+      setDriverModalVisible(true);
+    };
+
+    const openEditDriver = (driver: any) => {
+      setDriverEditId(Number(driver.id));
+      setDriverForm({
+        driver_name: String(driver.driver_name || ''),
+        plate_number: String(driver.plate_number || ''),
+        phone: String(driver.phone || ''),
+        status: String(driver.status || 'active')
+      });
+      setDriverModalVisible(true);
+    };
+
+    const saveDriver = async () => {
+      if (!driverForm.driver_name.trim()) {
+        Alert.alert('بيانات ناقصة', 'أدخل اسم السائق قبل الحفظ.');
+        return;
+      }
+      const row = {
+        driver_name: driverForm.driver_name.trim(),
+        plate_number: driverForm.plate_number.trim() || null,
+        phone: driverForm.phone.trim() || null,
+        status: driverForm.status || 'active'
+      };
+      try {
+        setLoadingDb(true);
+        const result = driverEditId
+          ? await supabase.from('drivers').update(row).eq('id', driverEditId)
+          : await supabase.from('drivers').insert(row);
+        if (result.error) throw result.error;
+        setDriverModalVisible(false);
+        Alert.alert('تم الحفظ', 'تم حفظ بيانات السائق في جدول drivers.');
+        await loadSupabaseData();
+      } catch (e: any) {
+        Alert.alert('تعذر حفظ السائق', e?.message || 'تحقق من صلاحيات جدول drivers.');
+      } finally {
+        setLoadingDb(false);
+      }
+    };
+
+    const deleteDriver = (driver: any) => {
+      Alert.alert('تأكيد حذف السائق', `هل تريد حذف السائق ${driver.driver_name}؟`, [
+        { text: 'إلغاء', style: 'cancel' },
+        { text: 'حذف', style: 'destructive', onPress: async () => {
+          try {
+            setLoadingDb(true);
+            const { error } = await supabase.from('drivers').delete().eq('id', Number(driver.id));
+            if (error) throw error;
+            Alert.alert('تم الحذف', 'حُذف السائق من قاعدة البيانات.');
+            await loadSupabaseData();
+          } catch (e: any) {
+            Alert.alert('تعذر حذف السائق', e?.message || 'قد توجد طلبات مرتبطة بهذا السائق.');
+          } finally {
+            setLoadingDb(false);
+          }
+        }}
+      ]);
+    };
+
+    return (
+      <View>
+        <View style={styles.pageHeaderRow}>
+          <Text style={styles.sectionTitle}>السائقون ({drivers.length})</Text>
+          <TouchableOpacity style={styles.smallPrimary} onPress={openAddDriver}>
+            <Text style={styles.btnText}>＋ إضافة سائق</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.helper}>تُقرأ البيانات وتُحفظ مباشرة في جدول drivers في Supabase.</Text>
+        <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}>
+          <Text style={styles.btnText}>🔄 تحديث قائمة السائقين</Text>
+        </TouchableOpacity>
+        {drivers.map((driver: any) => (
+          <View key={String(driver.id)} style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardId}>👤 {driver.driver_name}</Text>
+              <Text style={styles.badge}>{driver.status === 'active' ? 'نشط' : driver.status || 'غير محدد'}</Text>
+            </View>
+            <Text style={styles.cardText}>رقم السيارة: {driver.plate_number || 'غير مرتبط'}</Text>
+            <Text style={styles.cardText}>الهاتف: {driver.phone || 'غير مسجل'}</Text>
+            <View style={styles.actionRow}>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#64748B' }]} onPress={() => openEditDriver(driver)}>
+                <Text style={styles.btnText}>تعديل</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.danger }]} onPress={() => deleteDriver(driver)}>
+                <Text style={styles.btnText}>حذف</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ))}
+        <Modal visible={driverModalVisible} transparent animationType="slide" onRequestClose={() => setDriverModalVisible(false)}>
+          <View style={styles.modalOverlay}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[styles.modalCenter, { paddingBottom: 36 }]}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>{driverEditId ? 'تعديل بيانات سائق' : 'إضافة سائق جديد'}</Text>
+                <Text style={styles.label}>اسم السائق *</Text>
+                <TextInput style={styles.input} value={driverForm.driver_name}
+                  onChangeText={value => setDriverForm(p => ({ ...p, driver_name: value }))}
+                  textAlign="right" placeholder="اسم السائق" />
+                <Text style={styles.label}>رقم السيارة (plate_number)</Text>
+                <TextInput style={styles.input} value={driverForm.plate_number}
+                  onChangeText={value => setDriverForm(p => ({ ...p, plate_number: value }))}
+                  textAlign="right" keyboardType="default" placeholder="مثال: 22618" />
+                <Text style={styles.label}>رقم الهاتف</Text>
+                <TextInput style={styles.input} value={driverForm.phone}
+                  onChangeText={value => setDriverForm(p => ({ ...p, phone: value }))}
+                  textAlign="right" keyboardType="phone-pad" placeholder="رقم الهاتف" />
+                <Text style={styles.label}>الحالة</Text>
+                <View style={styles.choiceRow}>
+                  {[['active', 'نشط'], ['inactive', 'غير نشط']].map(([value, label]) => (
+                    <TouchableOpacity key={value} style={[styles.choice, driverForm.status === value && styles.choiceActive]}
+                      onPress={() => setDriverForm(p => ({ ...p, status: value }))}>
+                      <Text style={[styles.choiceText, driverForm.status === value && styles.choiceTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={styles.primaryBtn} disabled={loadingDb} onPress={saveDriver}>
+                  <Text style={styles.btnText}>{loadingDb ? 'جارٍ الحفظ...' : 'حفظ السائق'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setDriverModalVisible(false)}>
+                  <Text style={styles.btnText}>إلغاء</Text>
+                </TouchableOpacity>
               </View>
             </ScrollView>
           </View>
@@ -1467,10 +1504,9 @@ export default function App() {
     const filteredVehicles = fleet.filter(v => 
       !assignmentSearchCar || v.carNumber.includes(assignmentSearchCar) || v.name.includes(assignmentSearchCar)
     );
-    const filteredDrivers = driverProfiles.filter((p: any) => {
-      const name = String(p.full_name || p.username || '').trim();
-      return name && (!assignmentSearchDriver || name.includes(assignmentSearchDriver));
-    });
+    const filteredDrivers = driverNames.filter(d => 
+      !assignmentSearchDriver || d.includes(assignmentSearchDriver)
+    );
 
     return (
       <View>
@@ -1495,7 +1531,7 @@ export default function App() {
 
         <Text style={styles.label}>السائق</Text>
         <View style={{flexDirection: 'row-reverse', gap: 8, marginBottom: 10}}>
-          <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={async () => { await loadSupabaseData(); setDriverDropdownVisible(true); }}>
+          <TouchableOpacity style={[styles.dropdownInput, {flex: 1, marginBottom: 0}]} onPress={() => setDriverDropdownVisible(true)}>
             <Text style={{textAlign: 'right', color: assignmentForm.driver ? COLORS.text : COLORS.muted}}>
               {assignmentForm.driver || 'اختر السائق'}
             </Text>
@@ -1527,56 +1563,19 @@ export default function App() {
           textAlign="right" 
         />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={async () => {
+        <TouchableOpacity style={styles.primaryBtn} onPress={() => {
           if (!assignmentForm.vehicleId || !assignmentForm.driver) { Alert.alert('تنبيه', 'أكمل بيانات السيارة والسائق للربط.'); return; }
-          try {
-            const selectedVehicle = fleet.find(v => v.carNumber === assignmentForm.vehicleId);
-            const selectedDriver = driverProfiles.find((p: any) => String(p.id) === String(assignmentForm.driverId))
-              || driverProfiles.find((p: any) => String(p.full_name || p.username || '').trim() === assignmentForm.driver);
-            const vehicleDbId = Number(selectedVehicle?.id);
-            const driverUuid = String(selectedDriver?.id || '');
-            if (!Number.isFinite(vehicleDbId) || vehicleDbId <= 0) throw new Error('تعذر تحديد المعرّف الرقمي للسيارة. حدّث قائمة السيارات وحاول مجدداً.');
-            if (!driverUuid) throw new Error('تعذر تحديد حساب السائق في profiles. أعد اختيار السائق من القائمة.');
-            if (assignmentEndDate && !/^\d{4}-\d{2}-\d{2}$/.test(assignmentEndDate)) throw new Error('تاريخ النهاية يجب أن يكون بصيغة YYYY-MM-DD.');
-            if (!/^\d{4}-\d{2}-\d{2}$/.test(assignmentStartDate)) throw new Error('تاريخ البداية يجب أن يكون بصيغة YYYY-MM-DD.');
-            if (assignmentEndDate && assignmentEndDate < assignmentStartDate) throw new Error('تاريخ النهاية لا يمكن أن يسبق تاريخ البداية.');
-            const { data: authData } = await supabase.auth.getUser();
-            const assignedBy = authData.user?.id || null;
-            // Close any currently active assignment for this vehicle before inserting the new one.
-            const { error: closeError } = await supabase
-              .from('vehicle_driver_assignments')
-              .update({ end_date: assignmentStartDate })
-              .eq('vehicle_id', vehicleDbId)
-              .is('end_date', null);
-            if (closeError) throw closeError;
-            const { data: inserted, error: insertError } = await supabase
-              .from('vehicle_driver_assignments')
-              .insert({
-                vehicle_id: vehicleDbId,
-                driver_id: driverUuid,
-                start_date: assignmentStartDate,
-                end_date: assignmentEndDate || null,
-                assigned_by: assignedBy
-              })
-              .select('id, vehicle_id, driver_id, start_date, end_date')
-              .single();
-            if (insertError) throw insertError;
-            const newAsg: Assignment = {
-              id: String(inserted.id),
-              driver: String(selectedDriver.full_name || selectedDriver.username || assignmentForm.driver),
-              driverId: driverUuid,
-              vehicleId: assignmentForm.vehicleId,
-              startDate: String(inserted.start_date || assignmentStartDate),
-              endDate: inserted.end_date ? String(inserted.end_date) : 'مفتوح',
-              notes: ''
-            };
-            await loadSupabaseData();
-            setAssignments(prev => [newAsg, ...prev.filter(a => a.id !== newAsg.id)]);
-            setAssignmentForm({ id: '', driver: '', driverId: '', vehicleId: '', startDate: TODAY(), endDate: '', notes: '' });
-            Alert.alert('تم', 'تم حفظ ربط السائق في قاعدة البيانات بنجاح.');
-          } catch (e: any) {
-            Alert.alert('تعذر حفظ الربط', e?.message || 'لم يتم حفظ التخصيص. تحقق من سياسة RLS ثم حاول مجدداً.');
-          }
+          const newAsg: Assignment = {
+            id: `ASG-${Date.now()}`,
+            driver: assignmentForm.driver,
+            driverId: assignmentForm.driver,
+            vehicleId: assignmentForm.vehicleId,
+            startDate: assignmentStartDate,
+            endDate: assignmentEndDate || 'مفتوح',
+            notes: 'تم الربط بنجاح'
+          };
+          setAssignments(prev => [newAsg, ...prev]);
+          Alert.alert('تم', 'تم حفظ عملية الربط بنجاح.');
         }}>
           <Text style={styles.btnText}>حفظ عملية الربط</Text>
         </TouchableOpacity>
@@ -1622,16 +1621,12 @@ export default function App() {
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>اختيار السائق</Text>
               <ScrollView style={{ maxHeight: 450 }}>
-                {filteredDrivers.length === 0 ? <Text style={styles.emptyText}>لم يتم العثور على حسابات سائقين نشطة في profiles. تحقق من أن role يساوي driver وأن is_active مفعّل.</Text> : null}
-                {filteredDrivers.map((profile: any) => {
-                  const name = String(profile.full_name || profile.username || '').trim();
-                  return (
-                    <TouchableOpacity key={String(profile.id)} style={styles.driverOption}
-                      onPress={() => { setAssignmentForm(p => ({ ...p, driver: name, driverId: String(profile.id) })); setDriverDropdownVisible(false); }}>
-                      <Text style={styles.driverOptionText}>{name}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {filteredDrivers.map(name => (
+                  <TouchableOpacity key={name} style={styles.driverOption}
+                    onPress={() => { setAssignmentForm(p => ({ ...p, driver: name })); setDriverDropdownVisible(false); }}>
+                    <Text style={styles.driverOptionText}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
               </ScrollView>
               <TouchableOpacity style={styles.secondaryBtn} onPress={() => setDriverDropdownVisible(false)}>
                 <Text style={styles.btnText}>إغلاق</Text>
@@ -1857,7 +1852,7 @@ export default function App() {
         {[
           {title: 'الوضع الداكن', icon: '🌙', isSwitch: true},
           {title: 'بيانات الموظف', icon: '👤', action: () => Alert.alert('بيانات الموظف', `الاسم: ${currentUser?.name}\nالمستخدم: ${currentUser?.username}\nالدور: ${currentUser?.role}`)},
-          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => { setNewPassword(''); setConfirmNewPassword(''); setChangePasswordVisible(true); }},
+          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => Alert.alert('تغيير كلمة السر', 'قريباً تفعيل ميزة تغيير كلمة المرور.')},
           {title: 'قد يهمك', icon: '🛍️', action: () => Alert.alert('قد يهمك', 'لا توجد إشعارات أو عروض جديدة حالياً.')},
           {title: 'تحديث التطبيق', icon: '🔄', action: () => Alert.alert('التحديث', `أنت تستخدم أحدث إصدار (${APP_VERSION})`)},
           {title: 'مشاركة التطبيق', icon: '📤', action: () => Alert.alert('مشاركة', 'تم نسخ رابط التطبيق للحافظة.')},
@@ -1874,23 +1869,6 @@ export default function App() {
             )}
           </TouchableOpacity>
         ))}
-        <Modal visible={changePasswordVisible} transparent animationType="fade" onRequestClose={() => setChangePasswordVisible(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>تغيير كلمة المرور</Text>
-              <Text style={styles.label}>كلمة المرور الجديدة</Text>
-              <TextInput style={styles.input} value={newPassword} onChangeText={setNewPassword} placeholder="أدخل كلمة المرور الجديدة" secureTextEntry autoCapitalize="none" textAlign="right" />
-              <Text style={styles.label}>تأكيد كلمة المرور الجديدة</Text>
-              <TextInput style={styles.input} value={confirmNewPassword} onChangeText={setConfirmNewPassword} placeholder="أعد إدخال كلمة المرور" secureTextEntry autoCapitalize="none" textAlign="right" />
-              <TouchableOpacity style={styles.primaryBtn} disabled={savingPassword} onPress={handleChangePassword}>
-                <Text style={styles.btnText}>{savingPassword ? 'جارٍ الحفظ...' : 'حفظ كلمة المرور الجديدة'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn} disabled={savingPassword} onPress={() => { setChangePasswordVisible(false); setNewPassword(''); setConfirmNewPassword(''); }}>
-                <Text style={styles.btnText}>إلغاء</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
       </View>
     );
   };
@@ -2006,6 +1984,7 @@ export default function App() {
       ['coding', '🧩', 'التكويدات'],
       ['pricing', '💰', 'الأسعار'],
       ['fleet', '🚗', 'السيارات'],
+      ['drivers', '👤', 'السائقون'],
       ['assignments', '🔗', 'الربط'],
       ['permissions', '🔐', 'الصلاحيات'],
       ['reports', '📊', 'التقارير'],
@@ -2037,6 +2016,7 @@ export default function App() {
           {adminTab === 'coding' ? renderCoding() : null}
           {adminTab === 'pricing' ? renderPricing() : null}
           {adminTab === 'fleet' ? renderFleet() : null}
+          {adminTab === 'drivers' ? renderDrivers() : null}
           {adminTab === 'assignments' ? renderAssignments() : null}
           {adminTab === 'permissions' ? renderPermissions() : null}
           {adminTab === 'reports' ? renderReports(true) : null}
@@ -2148,19 +2128,17 @@ export default function App() {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <Text style={styles.modalTitle}>تكويد {codingModal}</Text>
-              <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder={editingCodingItem ? "اسم العنصر بعد التعديل" : "اسم العنصر الجديد"} textAlign="right" />
-              <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}><Text style={styles.btnText}>{editingCodingItem ? "حفظ التعديل" : "إضافة عنصر"}</Text></TouchableOpacity>
-              {editingCodingItem ? <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setEditingCodingItem(null); setNewItem(''); }}><Text style={styles.btnText}>إلغاء التعديل</Text></TouchableOpacity> : null}
+              <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder="اسم العنصر" textAlign="right" />
+              <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem}><Text style={styles.btnText}>إضافة عنصر</Text></TouchableOpacity>
               <ScrollView style={{maxHeight:320}}>
                 {codingModal ? codingMap[codingModal].map((item,index) => (
                   <View key={`${item}-${index}`} style={styles.inlineRow}>
                     <Text style={{flex:1,textAlign:'right'}}>{item}</Text>
-                    <TouchableOpacity onPress={() => { setEditingCodingItem(item); setNewItem(item); }}><Text style={{color:COLORS.primary,fontWeight:'800',marginHorizontal:8}}>تعديل</Text></TouchableOpacity>
                     <TouchableOpacity onPress={() => deleteCodingItem(codingModal,index)}><Text style={styles.deleteText}>حذف</Text></TouchableOpacity>
                   </View>
                 )) : null}
               </ScrollView>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setNewItem(''); setEditingCodingItem(null); }}><Text style={styles.btnText}>إغلاق</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={() => { setCodingModal(null); setNewItem(''); }}><Text style={styles.btnText}>إغلاق</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
