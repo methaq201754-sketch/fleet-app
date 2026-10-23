@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.78.38';
-const APP_BUILD = '78';
+const APP_VERSION = '1.79.39';
+const APP_BUILD = '79';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -226,9 +226,34 @@ export default function App() {
     }
   });
 
+  const loadCodingAndPriceData = async () => {
+    try {
+      const [{ data: codingRows, error: codingError }, { data: priceRows, error: priceError }] = await Promise.all([
+        supabase.from('fleet_app_codings').select('category, item_name, sort_order, is_active').eq('is_active', true).order('sort_order', { ascending: true }),
+        supabase.from('fleet_item_prices').select('category, item_name, price, updated_at').eq('is_active', true),
+      ]);
+      if (codingError) throw codingError;
+      if (priceError) throw priceError;
+      const categoryToSetter: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
+        'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+        'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
+        'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
+        'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes, 'نوع المهمة': setTripTypes,
+        'الوجهة/المنطقة': setTripDestinations,
+      };
+      const grouped: Record<string, string[]> = {};
+      (codingRows || []).forEach((row: any) => { (grouped[row.category] ||= []).push(row.item_name); });
+      Object.entries(grouped).forEach(([category, items]) => categoryToSetter[category]?.(items));
+      if (priceRows?.length) setPrices(prev => ({ ...prev, ...Object.fromEntries(priceRows.map((r: any) => [r.item_name, Number(r.price || 0)])) }));
+    } catch (e: any) {
+      console.warn('تعذر تحميل التكويدات والأسعار من قاعدة البيانات:', e?.message || e);
+    }
+  };
+
   const loadSupabaseData = async () => {
     try {
       setLoadingDb(true);
+      await loadCodingAndPriceData();
       const { data: pData, error: pError } = await supabase.from('profiles').select('id, username, full_name, role, phone, is_active');
       if (!pError && pData) setManagerProfiles(pData);
       const profilesForLookup = pData || [];
@@ -810,21 +835,44 @@ export default function App() {
     }
   };
 
-  const saveCodingItem = () => {
+  const saveCodingItem = async () => {
     if (!codingModal || !newItem.trim()) return;
+    const item = newItem.trim();
     const setter = codingSetters[codingModal];
     if (!setter) return;
-    setter(prev => [...prev, newItem.trim()]);
-    setNewItem('');
+    try {
+      const { error } = await supabase.from('fleet_app_codings').upsert({ category: codingModal, item_name: item, is_active: true }, { onConflict: 'category,item_name' });
+      if (error) throw error;
+      setter(prev => prev.includes(item) ? prev : [...prev, item]);
+      setNewItem('');
+      Alert.alert('تم الحفظ', 'تم حفظ التكويد في قاعدة البيانات.');
+    } catch (e: any) { Alert.alert('تعذر الحفظ', e?.message || 'تحقق من صلاحيات قاعدة البيانات.'); }
   };
 
   const deleteCodingItem = (key: string, index: number) => {
     const setter = codingSetters[key];
-    if (!setter) return;
-    Alert.alert('تأكيد الحذف', 'هل تريد حذف هذا التكويد؟', [
+    const item = codingMap[key]?.[index];
+    if (!setter || !item) return;
+    Alert.alert('تأكيد الحذف', 'سيتم إيقاف هذا التكويد في قاعدة البيانات ولن يظهر للمستخدمين.', [
       { text: 'إلغاء', style: 'cancel' },
-      { text: 'حذف', style: 'destructive', onPress: () => setter(prev => prev.filter((_, i) => i !== index)) }
+      { text: 'حذف', style: 'destructive', onPress: async () => {
+        try {
+          const { error } = await supabase.from('fleet_app_codings').update({ is_active: false }).eq('category', key).eq('item_name', item);
+          if (error) throw error;
+          setter(prev => prev.filter((_, i) => i !== index));
+        } catch (e: any) { Alert.alert('تعذر الحذف', e?.message || 'تحقق من صلاحيات قاعدة البيانات.'); }
+      }}
     ]);
+  };
+
+  const saveItemPrice = async (item: string, value: number) => {
+    const categoryByItem: Record<string, string> = {};
+    Object.entries(codingMap).forEach(([category, items]) => items.forEach(name => { categoryByItem[name] = category; }));
+    const category = categoryByItem[item] || 'عام';
+    try {
+      const { error } = await supabase.from('fleet_item_prices').upsert({ category, item_name: item, price: Math.max(0, Number(value) || 0), is_active: true, updated_at: new Date().toISOString() }, { onConflict: 'category,item_name' });
+      if (error) throw error;
+    } catch (e: any) { Alert.alert('تعذر حفظ السعر', e?.message || 'تحقق من صلاحيات قاعدة البيانات.'); }
   };
 
   const setVehiclePermission = (vehicleId: string, key: keyof PermissionSet, value: boolean) => {
@@ -923,11 +971,12 @@ export default function App() {
                   <View key={item} style={styles.priceRow}>
                     <Text style={[styles.cardText,{flex:1}]}>{item}</Text>
                     <TextInput style={styles.priceInput} keyboardType="numeric" value={String(prices[item] ?? 0)}
-                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))} />
+                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))}
+                      onEndEditing={e => saveItemPrice(item, Number(String(e?.nativeEvent?.text || '0').replace(/[^\d]/g, '')) || 0)} />
                   </View>
                 ))}
               </ScrollView>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPricingCategoryModal(null)}><Text style={styles.btnText}>حفظ وإغلاق</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.secondaryBtn} onPress={async () => { for (const item of selectedItems) await saveItemPrice(item, prices[item] ?? 0); setPricingCategoryModal(null); Alert.alert('تم الحفظ', 'تم حفظ الأسعار في قاعدة البيانات.'); }}><Text style={styles.btnText}>حفظ وإغلاق</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
