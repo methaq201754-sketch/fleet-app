@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.77.37';
-const APP_BUILD = '77';
+const APP_VERSION = '1.78.38';
+const APP_BUILD = '78';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -133,6 +133,7 @@ export default function App() {
   const [pricingCategoryModal, setPricingCategoryModal] = useState<string | null>(null);
   const [serviceTypeModal, setServiceTypeModal] = useState<string | null>(null);
   const [editingDispatchRequest, setEditingDispatchRequest] = useState<RequestItem | null>(null);
+  const [previewDispatchRequest, setPreviewDispatchRequest] = useState<RequestItem | null>(null);
   const [dispatchEditForm, setDispatchEditForm] = useState({ workshop: '', engineer: '', faultType: '', requiredWork: '', client: '', serviceDescription: '', notes: '' });
   const [codingModal, setCodingModal] = useState<string | null>(null);
   const [newItem, setNewItem] = useState('');
@@ -715,81 +716,43 @@ export default function App() {
   };
 
   const handlePreviewPrintCarRepair = async (req: RequestItem) => {
-    const vInfo = fleet.find(v => v.carNumber === req.vehicleId);
-    const html = `
-      <html dir="rtl">
-      <head>
-        <meta charset="utf-8">
-        <style>
-          body { font-family: 'Cairo', Tahoma, Arial, sans-serif; padding: 20px; color: #263238; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 15px; }
-          .right-title { font-weight: bold; font-size: 16px; color: #C0272D; }
-          .sub-title { font-size: 13px; font-weight: normal; margin-top: 4px; }
-          .center-title { text-align: center; font-size: 20px; font-weight: bold; margin: 15px 0; text-decoration: underline; }
-          .left-info { font-size: 13px; text-align: left; }
-          .section { border: 1px solid #ccc; padding: 12px; margin-bottom: 12px; border-radius: 8px; background: #fafafa; }
-          .section-title { font-weight: bold; margin-bottom: 6px; }
-          .footer-sign { display: flex; justify-content: space-between; margin-top: 25px; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div>
-            <div class="right-title">الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة</div>
-            <div class="sub-title">الخدمات الإدارية</div>
-          </div>
-          <div class="left-info">
-            <div>تاريخ الطلب: ${req.date}</div>
-            <div>رقم العملية: ${req.id}</div>
-          </div>
-        </div>
+    // المعاينة تفتح داخل التطبيق فقط؛ الطباعة لها زر مستقل.
+    setPreviewDispatchRequest(req);
+  };
 
-        <div class="center-title">طلب إصلاح سيارة</div>
-
-        <p>الإخوة / <b>${escapeHtml(req.workshop || req.client || 'ورشة الصيانة')}</b> المحترمون،،،</p>
-        <p>بعد التحية،،</p>
-        <p>رجاءً إجراء ما يلي على السيارة الموضحة بياناتها أدناه، وافادتنا بتقرير يوضح نوع العطل وسببه:</p>
-
-        <div class="section">
-          <div><b>رقم السيارة:</b> ${escapeHtml(req.vehicleId)} &nbsp;&nbsp;&nbsp; <b>اسم السيارة:</b> ${escapeHtml(vInfo?.name || '')}</div>
-          <div style="margin-top: 5px;"><b>نوع السيارة:</b> ${escapeHtml(vInfo?.type || '')} &nbsp;&nbsp;&nbsp; <b>الموديل:</b> ${escapeHtml(vInfo?.model || '')}</div>
-          <div style="margin-top: 5px;"><b>السائق:</b> ${escapeHtml(req.driver)}</div>
-          <div style="margin-top: 5px;"><b>الورشة:</b> ${escapeHtml(req.workshop || '')} &nbsp;&nbsp;&nbsp; <b>المهندس:</b> ${escapeHtml(req.engineer || '')}</div>
-        </div>
-        <div style="text-align: left; font-weight: bold; margin-bottom: 15px;">الخدمات الإدارية</div>
-
-        <div class="section">
-          <div class="section-title">الإخوة / الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة المحترمون،،</div>
-          <p>بعد فحص السيارة الموضحة بياناتها أعلاه، اتضح ما يلي:</p>
-          <ol>
-            <li><b>الأعطال:</b> ${escapeHtml(req.faultType || req.notes || '')}</li>
-            <li><b>الإجراء المطلوب:</b> ${escapeHtml(req.requiredWork || '')}</li>
-          </ol>
-          <div style="text-align: left; margin-top: 20px;"><b>مسؤول الورشة</b></div>
-        </div>
-
-        <div class="section">
-          <div><b>الإخوة / ${escapeHtml(req.client || 'العميل')} المحترمون،،</b></div>
-          <p style="margin-top: 5px;">توافق على الإصلاح؟ (نعم / لا)</p>
-          <div style="text-align: left; font-weight: bold;">الخدمات الإدارية</div>
-        </div>
-
-        <div class="section">
-          <div><b>الإخوة / الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة المحترمون،،</b></div>
-          <p style="margin-top: 5px;">تم إصلاح عطل السيارة المذكورة أعلاه، وتم تسليمها للأخ / <b>${escapeHtml(req.driver)}</b>.</p>
-          <div class="footer-sign">
-            <div>مسؤول الورشة</div>
-            <div>المستلم</div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+  const printMaintenanceDispatch = async () => {
+    const req = previewDispatchRequest;
+    if (!req) return;
     try {
-      const file = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri);
+      setLoadingDb(true);
+      const { data: templateRow, error: templateError } = await supabase
+        .from('document_templates')
+        .select('template_html')
+        .eq('template_key', 'maintenance_dispatch')
+        .eq('is_active', true)
+        .single();
+      if (templateError) throw new Error('تعذر جلب نموذج إرسالية الصيانة من قاعدة البيانات: ' + templateError.message);
+      if (!templateRow?.template_html) throw new Error('نموذج إرسالية الصيانة غير موجود أو غير مفعّل في قاعدة البيانات.');
+      const vInfo = fleet.find(v => String(v.carNumber) === String(req.vehicleId));
+      const values: Record<string, string> = {
+        company: 'الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة - تعز',
+        department: 'الخدمات الإدارية', date: escapeHtml(req.date || ''),
+        request_no: escapeHtml(req.id || ''), workshop: escapeHtml(req.workshop || 'ورشة الصيانة'),
+        car_number: escapeHtml(req.vehicleId || ''), car_name: escapeHtml(vInfo?.name || ''),
+        car_type: escapeHtml(vInfo?.type || ''), model: escapeHtml(vInfo?.model || ''),
+        driver: escapeHtml(req.driver || ''), fault: escapeHtml(req.faultType || req.notes || ''),
+        required_work: escapeHtml(req.requiredWork || ''), client: escapeHtml(req.client || 'الجهة المعنية'),
+      };
+      let html = String(templateRow.template_html);
+      for (const [key, value] of Object.entries(values)) {
+        html = html.replace(new RegExp('\\{\\{\\s*' + key + '\\s*\\}\\}', 'g'), value);
+      }
+      // طباعة A4 عبر نظام الطباعة في الجهاز؛ لا ننشئ ملفًا تلقائيًا عند فتح المعاينة.
+      await Print.printAsync({ html, width: 595, height: 842 });
     } catch (e: any) {
-      Alert.alert('خطأ', e?.message || 'تعذر الطباعة أو المعاينة');
+      Alert.alert('تعذر طباعة إرسالية الصيانة', e?.message || 'تحقق من اتصال قاعدة البيانات وصلاحيات جدول document_templates.');
+    } finally {
+      setLoadingDb(false);
     }
   };
 
@@ -1040,7 +1003,7 @@ export default function App() {
             {r.type === 'إرسالية صيانة' && (r.status === 'تمت الموافقة' || isRequestApprover(currentUser)) && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB'}]} onPress={() => handlePreviewPrintCarRepair(r)}>
-                  <Text style={styles.btnText}>معاينة وطباعة نموذج الإرسالية</Text>
+                  <Text style={styles.btnText}>معاينة نموذج الإرسالية</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -2080,6 +2043,56 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
+        </Modal>
+
+        <Modal visible={!!previewDispatchRequest} animationType="slide" onRequestClose={() => setPreviewDispatchRequest(null)}>
+          <SafeAreaView style={{flex:1,backgroundColor:'#EEF1F5'}}>
+            <View style={{flexDirection:'row-reverse',alignItems:'center',justifyContent:'space-between',padding:14,backgroundColor:'#fff',borderBottomWidth:1,borderColor:'#D1D5DB'}}>
+              <Text style={{fontSize:18,fontWeight:'900',color:'#202124'}}>معاينة إرسالية الصيانة</Text>
+              <TouchableOpacity onPress={() => setPreviewDispatchRequest(null)}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{padding:12,alignItems:'center'}}>
+              <View style={{width:'100%',maxWidth:520,backgroundColor:'#fff',padding:16,borderWidth:1,borderColor:'#9CA3AF',minHeight:720}}>
+                <Text style={{textAlign:'center',fontSize:17,fontWeight:'900',color:'#111827'}}>الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة - تعز</Text>
+                <Text style={{textAlign:'center',fontSize:13,fontWeight:'700',marginTop:5}}>الخدمات الإدارية</Text>
+                <Text style={{textAlign:'center',fontSize:18,fontWeight:'900',textDecorationLine:'underline',marginVertical:12,color:'#111827'}}>طلب إصلاح سيارة</Text>
+                <View style={{borderWidth:1,borderColor:'#4B5563',padding:10,marginBottom:10}}>
+                  <Text style={{textAlign:'right',fontWeight:'700',marginBottom:8}}>التاريخ: {previewDispatchRequest?.date || ''}     الرقم: {previewDispatchRequest?.id || ''}</Text>
+                  <Text style={{textAlign:'right',marginBottom:8}}>الأخوة / {previewDispatchRequest?.workshop || '................................'} المحترمون</Text>
+                  <Text style={{textAlign:'right',fontWeight:'700',marginBottom:8}}>بعد التحية،، يرجى إجراء ما يلي على السيارة المذكورة أدناه وإفادتنا بتقرير يوضح نوع العطل وسببه:</Text>
+                  <Text style={{textAlign:'right',marginBottom:6}}>1) نوع السيارة ورقمها: {previewDispatchRequest?.vehicleId || ''}</Text>
+                  <Text style={{textAlign:'right',marginBottom:6}}>اسم السائق: {previewDispatchRequest?.driver || ''}</Text>
+                  <Text style={{textAlign:'right',marginBottom:6}}>2) العمل المطلوب: {previewDispatchRequest?.requiredWork || ''}</Text>
+                  <Text style={{textAlign:'right',marginBottom:6}}>وصف العطل: {previewDispatchRequest?.faultType || previewDispatchRequest?.notes || ''}</Text>
+                  <Text style={{textAlign:'right',marginTop:16}}>الخدمات الإدارية __________________</Text>
+                  <Text style={{textAlign:'center',marginTop:20,fontWeight:'800'}}>مدير الإدارة __________________   السائق __________________</Text>
+                </View>
+                <View style={{borderWidth:1,borderColor:'#4B5563',padding:10,minHeight:125,marginBottom:10}}>
+                  <Text style={{textAlign:'right',fontWeight:'900'}}>الأخوة / الشركة اليمنية لصناعة الطلاء ومشتقاتها المحدودة</Text>
+                  <Text style={{textAlign:'right',fontWeight:'700',marginTop:8}}>بعد فحص السيارة تبين أن بها ما يلي:</Text>
+                  <Text style={{textAlign:'right',marginTop:10}}>........................................................................</Text>
+                  <Text style={{textAlign:'right',fontWeight:'700',marginTop:8}}>وتحتاج إلى قطع الغيار التالية:</Text>
+                  <Text style={{textAlign:'right',marginTop:10}}>........................................................................</Text>
+                  <Text style={{textAlign:'left',marginTop:12,fontWeight:'800'}}>مسؤول الورشة __________________</Text>
+                </View>
+                <View style={{borderWidth:1,borderColor:'#4B5563',padding:10,minHeight:100,marginBottom:10}}>
+                  <Text style={{textAlign:'right',fontWeight:'900'}}>الأخوة / {previewDispatchRequest?.workshop || 'الورشة'} المحترمون</Text>
+                  <Text style={{textAlign:'right',marginTop:8}}>نوافق على الإصلاح.</Text>
+                  <Text style={{textAlign:'left',marginTop:18,fontWeight:'800'}}>الخدمات الإدارية ____________     الجهة المعنية ____________</Text>
+                </View>
+                <View style={{borderWidth:1,borderColor:'#4B5563',padding:10,minHeight:80}}>
+                  <Text style={{textAlign:'right',fontWeight:'900'}}>تم إصلاح عطل السيارة المذكورة أعلاه وتم تسليمها</Text>
+                  <Text style={{textAlign:'left',marginTop:18,fontWeight:'800'}}>مسؤول الورشة ____________     توقيع المستلم ____________</Text>
+                </View>
+                <Text style={{textAlign:'center',fontSize:11,color:'#6B7280',marginTop:10}}>معاينة مبدئية للنموذج — الطباعة تستخدم القالب المعتمد المحفوظ في قاعدة البيانات.</Text>
+              </View>
+            </ScrollView>
+            <View style={{padding:12,backgroundColor:'#fff',borderTopWidth:1,borderColor:'#D1D5DB'}}>
+              <TouchableOpacity style={styles.primaryBtnLarge} disabled={loadingDb} onPress={printMaintenanceDispatch}>
+                <Text style={styles.btnTextLarge}>{loadingDb ? 'جارٍ تجهيز الطباعة...' : 'طباعة / حفظ PDF — ورق A4'}</Text>
+              </TouchableOpacity>
+            </View>
+          </SafeAreaView>
         </Modal>
 
         <Modal
