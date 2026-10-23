@@ -1954,7 +1954,45 @@ export default function App() {
       {people.map(person => <View key={person.id} style={styles.card}>
         <Text style={styles.cardTitle}>{person.full_name || person.username} ({person.username})</Text>
         <Text style={styles.cardText}>الدور: {person.role || 'غير محدد'} | {person.is_active ? 'نشط' : 'معطل'}</Text>
-        {<TouchableOpacity disabled={accountActionBusy === person.id} style={[styles.secondaryBtn,{backgroundColor: person.is_active ? COLORS.danger : COLORS.success, marginBottom:10}]} onPress={() => Alert.alert(person.is_active ? 'تعطيل الحساب' : 'تفعيل الحساب', `هل تريد ${person.is_active ? 'تعطيل' : 'تفعيل'} حساب ${person.full_name || person.username}؟`, [{text:'إلغاء',style:'cancel'},{text:'تأكيد',style:'destructive',onPress:async()=>{ try { setAccountActionBusy(person.id); const {data,error}=await supabase.functions.invoke('manage-user-account',{body:{target_user_id:person.id,action:person.is_active?'disable':'enable'}}); if(error) throw error; if(data?.error) throw new Error(data.error); setPermissionProfiles(prev=>prev.map(p=>p.id===person.id?{...p,is_active:!person.is_active}:p)); Alert.alert('تم',`تم ${person.is_active?'تعطيل':'تفعيل'} الحساب.`); } catch(e:any){Alert.alert('تعذر تنفيذ العملية',e?.message||'تأكد من نشر دالة manage-user-account وصلاحياتها.');} finally {setAccountActionBusy(null);} }}]}><Text style={styles.btnText}>{accountActionBusy===person.id?'جارٍ التنفيذ…':person.is_active?'تعطيل الحساب':'تفعيل الحساب'}</Text></TouchableOpacity>}
+        <TouchableOpacity
+          disabled={accountActionBusy === person.id}
+          style={[styles.secondaryBtn, { backgroundColor: person.is_active ? COLORS.danger : COLORS.success, marginBottom: 10 }]}
+          onPress={() => {
+            const action = person.is_active ? 'disable' : 'enable';
+            const actionLabel = person.is_active ? 'تعطيل' : 'تفعيل';
+            Alert.alert(
+              person.is_active ? 'تعطيل الحساب' : 'تفعيل الحساب',
+              `هل تريد ${actionLabel} حساب ${person.full_name || person.username}؟`,
+              [
+                { text: 'إلغاء', style: 'cancel' },
+                {
+                  text: 'تأكيد',
+                  style: 'destructive',
+                  onPress: async () => {
+                    try {
+                      setAccountActionBusy(person.id);
+                      const { data, error } = await supabase.functions.invoke('manage-user-account', {
+                        body: { target_user_id: person.id, action },
+                      });
+                      if (error) throw error;
+                      if (data?.error) throw new Error(data.error);
+                      setPermissionProfiles(prev => prev.map(p => p.id === person.id ? { ...p, is_active: !person.is_active } : p));
+                      Alert.alert('تم', `تم ${actionLabel} الحساب.`);
+                    } catch (e: any) {
+                      Alert.alert('تعذر تنفيذ العملية', e?.message || 'تأكد من نشر دالة manage-user-account وصلاحياتها.');
+                    } finally {
+                      setAccountActionBusy(null);
+                    }
+                  },
+                },
+              ]
+            );
+          }}
+        >
+          <Text style={styles.btnText}>
+            {accountActionBusy === person.id ? 'جارٍ التنفيذ…' : person.is_active ? 'تعطيل الحساب' : 'تفعيل الحساب'}
+          </Text>
+        </TouchableOpacity>
         {keys.map(([key,label]) => {
           const row = permissionRows.find(x => x.user_id === person.id && x.permission_key === key);
           return <View key={key} style={styles.switchRow}><Switch value={!!row?.enabled} onValueChange={value=>savePermission(person.id,key,value)} /><Text style={styles.switchLabel}>{label}</Text></View>;
