@@ -10,19 +10,22 @@ import * as FileSystem from 'expo-file-system';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supabase Integration Setup & Keys
 const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
+    storage: AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: false,
   }
 });
 
-const APP_VERSION = '1.84.52';
-const APP_BUILD = '84';
+const APP_VERSION = '1.85.55';
+const APP_BUILD = '85';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
