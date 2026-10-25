@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "669831606038",
+    "project_id": "methaq-f8368",
+    "storage_bucket": "methaq-f8368.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:669831606038:android:d83bd95ad9adeb8948aa37",
+        "android_client_info": {
+          "package_name": "com.fleet.management"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCDlt5qkqNMxdwS-D6rqW5IsLcvR3m7MA4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
