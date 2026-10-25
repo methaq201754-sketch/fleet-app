@@ -21,8 +21,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.83.51';
-const APP_BUILD = '83';
+const APP_VERSION = '1.84.52';
+const APP_BUILD = '84';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -395,20 +395,29 @@ export default function App() {
         const expoPushToken = tokenResult?.data;
         if (!expoPushToken) throw new Error('لم تُرجع خدمة Expo رمز إشعارات لهذا الجهاز.');
 
-        const { error: saveError } = await supabase.from('fleet_push_tokens').upsert({
-          user_id: currentUser.authId,
-          expo_push_token: expoPushToken,
-          device_label: 'Android',
-          is_active: true,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'expo_push_token' });
-        if (saveError) throw saveError;
+        // استخدم هوية جلسة Supabase المصادَق عليها، لا هوية واجهة التطبيق وحدها.
+        const { data: authData, error: authError } = await supabase.auth.getUser();
+        if (authError) throw authError;
+        const authenticatedUserId = authData.user?.id;
+        if (!authenticatedUserId) {
+          throw new Error('جلسة الدخول غير متاحة. سجّل الخروج ثم ادخل مجددًا.');
+        }
 
-        console.log('Push token registered successfully for user:', currentUser.authId);
+        // دالة آمنة في قاعدة البيانات تعالج تعارض الرمز عند تبديل الحساب على الجهاز نفسه.
+        const { data: saveData, error: saveError } = await supabase.rpc('register_fleet_push_token', {
+          p_expo_push_token: expoPushToken,
+          p_device_label: 'Android',
+        });
+        if (saveError) throw saveError;
+        if (saveData && saveData.ok === false) {
+          throw new Error(saveData.message || 'تعذر حفظ رمز إشعارات الهاتف.');
+        }
+
+        console.log('Push token registered successfully for authenticated user:', authenticatedUserId);
       } catch (e: any) {
         const message = e?.message || String(e || 'خطأ غير معروف');
-        console.log('Push token registration failed:', message);
-        Alert.alert('تعذّر تفعيل إشعارات الهاتف', message);
+        // لا نوقف المستخدم برسالة منبثقة عند كل دخول؛ يظل السبب ظاهرًا في سجل التشخيص.
+        console.warn('Push token registration failed:', message);
       }
     };
     registerPushToken();
