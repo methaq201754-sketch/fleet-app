@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.87.57';
-const APP_BUILD = '87';
+const APP_VERSION = '1.88.58';
+const APP_BUILD = '88';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -36,7 +36,7 @@ type Vehicle = {
 };
 
 type RequestItem = {
-  id: string; vehicleId: string; driver: string; type: string; date: string;
+  id: string; approvalNumber?: string; vehicleId: string; driver: string; type: string; date: string;
   qty: number; total: number; status: string; notes?: string; imageUri?: string;
   station?: string; fuelType?: string; unit?: string; oilType?: string;
   itemName?: string; prevOdo?: number; currOdo?: number; distance?: number;
@@ -166,6 +166,14 @@ export default function App() {
   const [reportType, setReportType] = useState('الكل');
   
   const [subView, setSubView] = useState<'report' | 'create'>('report');
+  const [selectedServiceScreenType, setSelectedServiceScreenType] = useState<string | null>(null);
+  const [serviceScreenMode, setServiceScreenMode] = useState<'create' | 'history'>('create');
+  const [requestStatusFilter, setRequestStatusFilter] = useState('الكل');
+  const [adminReportCategory, setAdminReportCategory] = useState('الكل');
+  const [adminReportMode, setAdminReportMode] = useState<'إجمالي' | 'تفصيلي'>('تفصيلي');
+  const [adminReportMonth, setAdminReportMonth] = useState('الكل');
+  const [adminReportYear, setAdminReportYear] = useState('الكل');
+  const [adminReportStatus, setAdminReportStatus] = useState('الكل');
   const [darkMode, setDarkMode] = useState(false);
   const [ownershipTypes, setOwnershipTypes] = useState<string[]>(['شركة','خاصة']);
   
@@ -281,7 +289,7 @@ export default function App() {
               ? ((r.services_status === 'موافق') ? 'المسؤول' : 'الخدمات الإدارية')
               : 'المسؤول المباشر';
           return {
-            id: String(r.id), vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
+            id: String(r.id), approvalNumber: r.approval_number || '', vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
             type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
             qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
             notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
@@ -543,12 +551,13 @@ export default function App() {
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
         total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
-        notes: makeStoredNotes(item), image_url: null, status: 'تحت المراجعة',
+        notes: makeStoredNotes(item), image_url: null, approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
         direct_manager_status: 'تحت المراجعة', services_status: 'تحت المراجعة'
       }).select();
       if (error) throw error;
       if (data && data.length > 0) {
         item.id = String(data[0].id);
+        item.approvalNumber = data[0].approval_number || '';
       }
       setRequests(prev => [item, ...prev]);
       setServiceTypeModal(null); resetRequestForm(); setUserTab('service');
@@ -1769,6 +1778,20 @@ export default function App() {
 
   const renderMyRequestsAndReports = () => {
     const myRows = requests.filter(r => r.vehicleId === currentUser?.id || r.applicantId === currentUser?.authId);
+    if (selectedServiceScreenType) {
+      const typeRows = myRows.filter(r => r.type === selectedServiceScreenType || (selectedServiceScreenType === 'إرسالية صيانة وخدمات' && /إرسالية صيانة|إرسالية خدمات بنشر/.test(r.type)));
+      return <View>
+        <TouchableOpacity onPress={() => setSelectedServiceScreenType(null)} style={[styles.actionBtn, {backgroundColor: COLORS.muted, marginBottom: 12}]}><Text style={styles.btnText}>رجوع إلى قائمة الخدمات</Text></TouchableOpacity>
+        <Text style={styles.sectionTitle}>{selectedServiceScreenType}</Text>
+        <View style={{flexDirection:'row-reverse', gap:8, marginBottom:12}}>
+          <TouchableOpacity onPress={() => setServiceScreenMode('create')} style={[styles.choice, serviceScreenMode === 'create' && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, serviceScreenMode === 'create' && styles.choiceTextActive]}>إنشاء طلب</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setServiceScreenMode('history')} style={[styles.choice, serviceScreenMode === 'history' && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, serviceScreenMode === 'history' && styles.choiceTextActive]}>سجل طلبات النوع ({typeRows.length})</Text></TouchableOpacity>
+        </View>
+        {serviceScreenMode === 'create' ? <View style={styles.card}><Text style={styles.cardText}>إنشاء طلب جديد من نوع: {selectedServiceScreenType}</Text><TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(selectedServiceScreenType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity></View> : <View>
+          {typeRows.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد طلبات من هذا النوع.</Text></View> : typeRows.map(r => <View key={r.id} style={styles.card}><View style={styles.cardHeader}><Text style={styles.cardId}>طلب #{r.id}{r.approvalNumber ? ` | اعتماد ${r.approvalNumber}` : ''}</Text><Text style={styles.badge}>{r.status}</Text></View><Text style={styles.cardTitle}>{r.type}</Text><Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty} {r.unit || ''}</Text><Text style={styles.cardText}>الإجمالي: {money(r.total)}</Text>{r.type === 'إرسالية صيانة' && r.status === 'تمت الموافقة' ? <TouchableOpacity style={[styles.actionBtn,{marginTop:8}]} onPress={() => handlePreviewPrintCarRepair(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity> : null}{r.type === 'إرسالية خدمات بنشر' && r.status === 'تمت الموافقة' ? <TouchableOpacity style={[styles.actionBtn,{marginTop:8}]} onPress={() => handlePreviewPrintPunctureService(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity> : null}</View>)}
+        </View>}
+      </View>;
+    }
     return (
       <View>
         <View style={{flexDirection: 'row-reverse', backgroundColor: '#fff', borderRadius: 12, padding: 4, marginBottom: 15, borderWidth: 1, borderColor: COLORS.border}}>
@@ -1783,9 +1806,9 @@ export default function App() {
         {subView === 'create' ? (
           <View>
             <Text style={styles.sectionTitle}>الخدمات والطلبات</Text>
-            {['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'صيانة', 'إطارات', 'إرسالية صيانة وخدمات'].map((type, index) => (
-              <TouchableOpacity key={type} style={styles.serviceCard} onPress={() => openServiceRequest(type)}>
-                <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛠️','🛞','🧰'][index]}</Text></View>
+            {['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'إطارات', 'إرسالية صيانة وخدمات'].map((type, index) => (
+              <TouchableOpacity key={type} style={styles.serviceCard} onPress={() => { setSelectedServiceScreenType(type); setServiceScreenMode('create'); }}>
+                <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛞','🧰'][index]}</Text></View>
                 <View style={{flex:1}}><Text style={styles.serviceTitle}>{type === 'إرسالية صيانة وخدمات' ? 'طلب إرسالية صيانة وخدمات' : `طلب ${type}`}</Text><Text style={styles.serviceSub}>إنشاء طلب جديد وإرفاق المستندات</Text></View>
                 <Text style={styles.chevron}>‹</Text>
               </TouchableOpacity>
@@ -1803,7 +1826,7 @@ export default function App() {
               return (
                 <View key={r.id} style={[styles.card, {borderRightWidth: 5, borderRightColor: isApproved ? COLORS.success : isRejected ? COLORS.danger : COLORS.warning}]}>
                   <View style={styles.cardHeader}>
-                    <Text style={styles.cardId}>طلب #{r.id}</Text>
+                    <Text style={styles.cardId}>طلب #{r.id}{r.approvalNumber ? ` | اعتماد ${r.approvalNumber}` : ''}</Text>
                     <Text style={[styles.badge, {backgroundColor: isApproved ? '#E8F5E9' : isRejected ? '#FFEBEE' : '#FFF4E5', color: isApproved ? COLORS.success : isRejected ? COLORS.danger : '#9A5B00'}]}>{r.status}</Text>
                   </View>
                   <Text style={styles.cardTitle}>{r.type}</Text>
@@ -1923,32 +1946,44 @@ export default function App() {
 
   const renderReports = (isAdmin = false) => {
     let rows = isAdmin ? requests : requests.filter(r => r.vehicleId === currentUser?.id || r.applicantId === currentUser?.authId);
-    if (reportType !== 'الكل') rows = rows.filter(r => r.type === reportType);
+    const reportCategories = [
+      { key: 'الكل', label: 'كل الخدمات' }, { key: 'وقود', label: 'وقود' },
+      { key: 'زيوت', label: 'زيوت' }, { key: 'بطاريات', label: 'بطاريات' },
+      { key: 'قطع غيار', label: 'قطع غيار' }, { key: 'صيانة', label: 'صيانة' },
+      { key: 'إطارات', label: 'إطارات' }, { key: 'رحلات', label: 'رحلات' },
+    ];
+    if (adminReportCategory !== 'الكل') {
+      rows = rows.filter(r => adminReportCategory === 'رحلات' ? /رحلة|مهمة/.test(r.type) : r.type.includes(adminReportCategory));
+    }
+    if (adminReportMonth !== 'الكل') rows = rows.filter(r => String(r.date || '').slice(5,7) === adminReportMonth);
+    if (adminReportYear !== 'الكل') rows = rows.filter(r => String(r.date || '').slice(0,4) === adminReportYear);
+    const approvedStatuses = ['تمت الموافقة', 'موافق', 'معتمد', 'مقبول'];
+    const rejectedStatuses = ['مرفوض', 'تم رفض الطلب', 'مرفوضة'];
+    const pendingStatuses = ['تحت المراجعة', 'قيد المراجعة', 'بانتظار الموافقة', 'جديد', 'pending'];
+    if (adminReportStatus === 'المقبولة') rows = rows.filter(r => approvedStatuses.includes(String(r.status || '').trim()));
+    else if (adminReportStatus === 'المرفوضة') rows = rows.filter(r => rejectedStatuses.includes(String(r.status || '').trim()));
+    else if (adminReportStatus === 'تحت المراجعة') rows = rows.filter(r => pendingStatuses.includes(String(r.status || '').trim()));
     const total = rows.reduce((s,r) => s + Number(r.total || 0), 0);
+    const totalQty = rows.reduce((s,r) => s + Number(r.qty || 0), 0);
+    const years = Array.from(new Set(requests.map(r => String(r.date || '').slice(0,4)).filter(y => /^\d{4}$/.test(y)))).sort().reverse();
     return (
       <View>
         <Text style={styles.sectionTitle}>{isAdmin ? 'التقارير الشاملة' : 'تقارير طلباتي'}</Text>
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryTitle}>إجمالي المصاريف والطلبات</Text>
-          <Text style={styles.summaryValue}>{money(total)}</Text>
-          <Text style={styles.summarySub}>{rows.length} عملية</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom: 10}}>
+          {reportCategories.map(cat => <TouchableOpacity key={cat.key} onPress={() => setAdminReportCategory(cat.key)} style={[styles.choice, adminReportCategory === cat.key && styles.choiceActive]}><Text style={[styles.choiceText, adminReportCategory === cat.key && styles.choiceTextActive]}>{cat.label}</Text></TouchableOpacity>)}
+        </ScrollView>
+        <View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:8, marginBottom:10}}>
+          <View style={{flex:1, minWidth:100}}><Text style={styles.cardText}>الشهر</Text><View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:4}}>{['الكل','01','02','03','04','05','06','07','08','09','10','11','12'].map(m => <TouchableOpacity key={m} onPress={() => setAdminReportMonth(m)} style={[styles.choice, adminReportMonth===m && styles.choiceActive]}><Text style={[styles.choiceText, adminReportMonth===m && styles.choiceTextActive]}>{m}</Text></TouchableOpacity>)}</View></View>
+          <View style={{minWidth:100}}><Text style={styles.cardText}>السنة</Text><View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:4}}>{['الكل', ...years].map(y => <TouchableOpacity key={y} onPress={() => setAdminReportYear(y)} style={[styles.choice, adminReportYear===y && styles.choiceActive]}><Text style={[styles.choiceText, adminReportYear===y && styles.choiceTextActive]}>{y}</Text></TouchableOpacity>)}</View></View>
         </View>
-        {rows.map(r => (
-          <View key={r.id} style={styles.card}>
-            <View style={styles.cardHeader}><Text style={styles.cardId}>{r.id}</Text><Text style={styles.badge}>{r.status}</Text></View>
-            <Text style={styles.cardTitle}>{r.type}</Text>
-            <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
-            <Text style={styles.cardText}>التكلفة: {money(r.total)}</Text>
-          </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom:10}}>{['الكل','تحت المراجعة','المقبولة','المرفوضة'].map(st => <TouchableOpacity key={st} onPress={() => setAdminReportStatus(st)} style={[styles.choice, adminReportStatus===st && styles.choiceActive]}><Text style={[styles.choiceText, adminReportStatus===st && styles.choiceTextActive]}>{st}</Text></TouchableOpacity>)}</ScrollView>
+        <View style={{flexDirection:'row-reverse', gap:8, marginBottom:12}}>{(['إجمالي','تفصيلي'] as const).map(mode => <TouchableOpacity key={mode} onPress={() => setAdminReportMode(mode)} style={[styles.choice, adminReportMode===mode && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, adminReportMode===mode && styles.choiceTextActive]}>{mode}</Text></TouchableOpacity>)}</View>
+        <View style={styles.summaryCard}><Text style={styles.summaryTitle}>إجمالي المصاريف والطلبات</Text><Text style={styles.summaryValue}>{money(total)}</Text><Text style={styles.summarySub}>{rows.length} عملية | إجمالي الكميات: {totalQty}</Text></View>
+        {rows.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد بيانات مطابقة للفلاتر المحددة.</Text></View> : null}
+        {adminReportMode === 'إجمالي' ? <View style={styles.card}><Text style={styles.cardTitle}>ملخص التقرير</Text><Text style={styles.cardText}>الفئة: {adminReportCategory}</Text><Text style={styles.cardText}>عدد العمليات: {rows.length}</Text><Text style={styles.cardText}>إجمالي الكمية: {totalQty}</Text><Text style={styles.cardText}>إجمالي التكلفة: {money(total)}</Text></View> : rows.map(r => (
+          <View key={r.id} style={styles.card}><View style={styles.cardHeader}><Text style={styles.cardId}>طلب #{r.id}{r.approvalNumber ? ` | اعتماد ${r.approvalNumber}` : ''}</Text><Text style={styles.badge}>{r.status}</Text></View><Text style={styles.cardTitle}>{r.type}</Text><Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty} {r.unit || ''}</Text><Text style={styles.cardText}>المركبة: {r.vehicleId || '—'} | السائق/مقدم الطلب: {r.driver || '—'}</Text><Text style={styles.cardText}>التكلفة: {money(r.total)}</Text>{r.station ? <Text style={styles.cardText}>المحطة: {r.station}</Text> : null}{r.itemName ? <Text style={styles.cardText}>الصنف: {r.itemName}</Text> : null}</View>
         ))}
-        <View style={styles.actionRow}>
-          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.success }]} onPress={() => exportExcel(rows, isAdmin ? 'admin-report' : 'my-report')}>
-            <Text style={styles.btnText}>تصدير Excel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.primary }]} onPress={() => exportPdf(rows, isAdmin ? 'التقرير العام' : 'تقرير مصاريف السيارة')}>
-            <Text style={styles.btnText}>تصدير PDF</Text>
-          </TouchableOpacity>
-        </View>
+        <View style={styles.actionRow}><TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.success }]} onPress={() => exportExcel(rows, isAdmin ? 'admin-report' : 'my-report')}><Text style={styles.btnText}>تصدير Excel</Text></TouchableOpacity><TouchableOpacity style={[styles.exportBtn, { backgroundColor: COLORS.primary }]} onPress={() => exportPdf(rows, isAdmin ? 'التقرير العام' : 'تقرير مصاريف السيارة')}><Text style={styles.btnText}>تصدير PDF</Text></TouchableOpacity></View>
       </View>
     );
   };
