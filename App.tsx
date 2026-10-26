@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.88.58';
-const APP_BUILD = '88';
+const APP_VERSION = '1.89.59';
+const APP_BUILD = '89';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -164,6 +164,8 @@ export default function App() {
   const [serviceDescription, setServiceDescription] = useState('');
   const [editDriverName, setEditDriverName] = useState('');
   const [reportType, setReportType] = useState('الكل');
+  const [selectedRepCat, setSelectedRepCat] = useState('وقود');
+  const [repMode, setRepMode] = useState<'إجمالي' | 'تفصيلي'>('إجمالي');
   
   const [subView, setSubView] = useState<'report' | 'create'>('report');
   const [selectedServiceScreenType, setSelectedServiceScreenType] = useState<string | null>(null);
@@ -1869,9 +1871,6 @@ export default function App() {
       { key: 'بطاريات', label: 'تقارير البطاريات', icon: '🔋' },
       { key: 'رحلات', label: 'تقارير الرحلات', icon: '🧭' },
     ];
-
-    const [selectedRepCat, setSelectedRepCat] = useState('وقود');
-    const [repMode, setRepMode] = useState<'إجمالي' | 'تفصيلي'>('إجمالي');
 
     const filteredRows = myRows.filter(r => {
       if (selectedRepCat === 'رحلات') return r.type.includes('رحلة') || r.type.includes('مهمة');
