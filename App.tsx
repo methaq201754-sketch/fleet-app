@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.86.56';
-const APP_BUILD = '86';
+const APP_VERSION = '1.87.57';
+const APP_BUILD = '87';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#F4F7FB', card: '#FFFFFF', text: '#263238', muted: '#718096',
@@ -85,6 +85,12 @@ const isRequestApprover = (user: any) => {
 };
 
 export default function App() {
+  const [showFourDotSplash, setShowFourDotSplash] = useState(true);
+  useEffect(() => {
+    const splashTimer = setTimeout(() => setShowFourDotSplash(false), 1400);
+    return () => clearTimeout(splashTimer);
+  }, []);
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -710,6 +716,21 @@ export default function App() {
       return;
     }
 
+    if (updated.type === 'إرسالية صيانة') {
+      const estimatedText = dispatchEditForm.estimatedCost.trim();
+      const finalText = dispatchEditForm.finalCost.trim();
+      if ((estimatedText !== '' && (!Number.isFinite(Number(estimatedText)) || Number(estimatedText) < 0)) ||
+          (finalText !== '' && (!Number.isFinite(Number(finalText)) || Number(finalText) < 0))) {
+        Alert.alert('قيمة غير صحيحة', 'أدخل التكلفة التقديرية والنهائية كأرقام صفر أو أكبر.');
+        return;
+      }
+      const dateValues = [dispatchEditForm.repairCompletedAt.trim(), dispatchEditForm.deliveredAt.trim()].filter(Boolean);
+      if (dateValues.some(value => Number.isNaN(Date.parse(value)))) {
+        Alert.alert('صيغة تاريخ غير صحيحة', 'اكتب تاريخ الإصلاح والتسليم بصيغة مثل 2026-10-26T12:30:00 أو اترك الحقل فارغًا.');
+        return;
+      }
+    }
+
     try {
       setLoadingDb(true);
       const { error } = await supabase
@@ -726,8 +747,6 @@ export default function App() {
             request_id: Number(updated.id),
             workshop: updated.workshop || null,
             engineer: updated.engineer || null,
-            workshop: updated.workshop || null,
-            engineer: updated.engineer || null,
             fault_type: updated.faultType || null,
             fault_cause: dispatchEditForm.faultCause.trim() || updated.faultType || null,
             required_work: updated.requiredWork || null,
@@ -738,11 +757,10 @@ export default function App() {
             approval_status: dispatchEditForm.approvalStatus || 'pending',
             approval_notes: dispatchEditForm.approvalNotes.trim() || null,
             repair_status: dispatchEditForm.repairStatus || 'pending',
-            repair_completed_at: dispatchEditForm.repairCompletedAt.trim() || null,
+            repair_completed_at: dispatchEditForm.repairCompletedAt.trim() ? new Date(dispatchEditForm.repairCompletedAt.trim()).toISOString() : null,
             delivered_to: dispatchEditForm.deliveredTo.trim() || null,
-            delivered_at: dispatchEditForm.deliveredAt.trim() || null,
+            delivered_at: dispatchEditForm.deliveredAt.trim() ? new Date(dispatchEditForm.deliveredAt.trim()).toISOString() : null,
             delivery_notes: dispatchEditForm.deliveryNotes.trim() || null,
-            created_by: currentUser?.id || null,
             updated_by: currentUser?.id || null,
           }, { onConflict: 'request_id' });
         if (dispatchError) throw new Error('تم تحديث الطلب، لكن تعذر حفظ سجل الصيانة المنظم: ' + dispatchError.message);
@@ -777,7 +795,11 @@ export default function App() {
         faultType: dispatchData?.fault_type || req.faultType,
         requiredWork: dispatchData?.required_work || req.requiredWork,
       };
-      const vInfo = fleet.find(v => String(v.carNumber) === String(printReq.vehicleId));
+      const vehicleKey = String(printReq.vehicleId ?? '').trim();
+      const vInfo = fleet.find(v => String(v.carNumber ?? '').trim() === vehicleKey || String(v.id ?? '').trim() === vehicleKey);
+      if (!vInfo) {
+        throw new Error('لم يتم العثور على السيارة رقم ' + (vehicleKey || 'غير محدد') + ' ضمن بيانات الأسطول المحمّلة. حدّث بيانات الأسطول ثم أعد الطباعة.');
+      }
       const company = escapeHtml('الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة - تعز');
       const department = escapeHtml('الخدمات الإدارية');
       const date = escapeHtml(printReq.date || '');
@@ -2051,6 +2073,20 @@ export default function App() {
     );
   };
 
+  if (showFourDotSplash) {
+    return (
+      <SafeAreaView style={styles.splashScreen}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+        <View style={styles.splashDotsRow}>
+          <View style={[styles.splashDot, { backgroundColor: '#C0272D' }]} />
+          <View style={[styles.splashDot, { backgroundColor: '#FF7A45' }]} />
+          <View style={[styles.splashDot, { backgroundColor: '#9E1F24' }]} />
+          <View style={[styles.splashDot, { backgroundColor: '#F4A261' }]} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!currentUser) {
     return (
       <SafeAreaView style={styles.loginContainer}>
@@ -2293,6 +2329,9 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
+  splashScreen:{flex:1,backgroundColor:'#FFFFFF',alignItems:'center',justifyContent:'center'},
+  splashDotsRow:{flexDirection:'row',alignItems:'center',justifyContent:'center',gap:12},
+  splashDot:{width:12,height:12,borderRadius:6},
   container:{flex:1,backgroundColor:COLORS.bg},
   loginContainer:{flex:1,backgroundColor:COLORS.bg,justifyContent:'center',alignItems:'center',padding:20},
   loginCard:{width:'100%',maxWidth:400,backgroundColor:'#fff',borderRadius:24,padding:26,elevation:5},
