@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.90.60';
-const APP_BUILD = '90';
+const APP_VERSION = '1.91.61';
+const APP_BUILD = '91';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -120,6 +120,10 @@ export default function App() {
   
   const [requestManagersTab, setRequestManagersTab] = useState('distribute');
   const [managerProfiles, setManagerProfiles] = useState<any[]>([]);
+  const [roleAccountId, setRoleAccountId] = useState('');
+  const [roleAccountPermissions, setRoleAccountPermissions] = useState<string[]>([]);
+  const [rolePermissionsLoading, setRolePermissionsLoading] = useState(false);
+  const [rolePermissionsSaving, setRolePermissionsSaving] = useState(false);
   const [workflowRoutes, setWorkflowRoutes] = useState<string[]>(['المسؤول المباشر', 'الخدمات الإدارية', 'المسؤول النهائي']);
   const [newRouteName, setNewRouteName] = useState('');
   const [userTab, setUserTab] = useState('service');
@@ -1186,6 +1190,87 @@ export default function App() {
     );
   };
 
+  const permissionOptions = [
+    { key: 'regular_user', label: 'حساب عادي' },
+    { key: 'direct_manager', label: 'مسؤول مباشر' },
+    { key: 'services_alnaqil', label: 'الخدمات الإدارية – النقيل' },
+    { key: 'services_administration', label: 'الخدمات الإدارية – الإدارة' },
+  ];
+
+  const loadAccountPermissions = async (profileId: string) => {
+    setRoleAccountId(profileId);
+    setRolePermissionsLoading(true);
+    try {
+      const { data, error } = await supabase.from('fleet_user_permissions')
+        .select('permission_key').eq('user_id', profileId);
+      if (error) throw error;
+      setRoleAccountPermissions((data || []).map((x: any) => String(x.permission_key)));
+    } catch (e: any) {
+      setRoleAccountPermissions([]);
+      Alert.alert('تعذر تحميل الصلاحيات', e?.message || 'تحقق من تنفيذ ملف SQL وسياسات الجدول.');
+    } finally { setRolePermissionsLoading(false); }
+  };
+
+  const saveAccountPermissions = async () => {
+    if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل صلاحياته.'); return; }
+    setRolePermissionsSaving(true);
+    try {
+      if (roleAccountPermissions.length) {
+        const rows = roleAccountPermissions.map(permission_key => ({
+          user_id: roleAccountId, permission_key, granted_by: currentUser?.authId || null,
+          updated_at: new Date().toISOString()
+        }));
+        const { error } = await supabase.from('fleet_user_permissions')
+          .upsert(rows, { onConflict: 'user_id,permission_key' });
+        if (error) throw error;
+      }
+      let cleanup = supabase.from('fleet_user_permissions').delete().eq('user_id', roleAccountId);
+      if (roleAccountPermissions.length) cleanup = cleanup.not('permission_key', 'in', `(${roleAccountPermissions.join(',')})`);
+      const { error: cleanupError } = await cleanup;
+      if (cleanupError) throw cleanupError;
+      Alert.alert('تم الحفظ', 'حُفظت صلاحيات الحساب في قاعدة البيانات.');
+    } catch (e: any) {
+      Alert.alert('فشل حفظ الصلاحيات', e?.message || 'تحقق من صلاحية system_admin وسياسات قاعدة البيانات.');
+    } finally { setRolePermissionsSaving(false); }
+  };
+
+  const renderAccountRoleManager = () => (
+    <View style={styles.card}>
+      <Text style={styles.sectionTitle}>إدارة أدوار الحسابات</Text>
+      <Text style={styles.helper}>اختر أي حساب، ثم فعّل أكثر من صلاحية مستقلة. لا يغيّر هذا الاختيار الدور الأساسي للحساب.</Text>
+      <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}>
+        <Text style={styles.btnText}>تحديث قائمة الحسابات</Text>
+      </TouchableOpacity>
+      <Text style={styles.cardTitle}>الحساب</Text>
+      <ScrollView style={{maxHeight:260}} nestedScrollEnabled>
+        {managerProfiles.filter((p: any) => p.is_active !== false).map((p: any) => (
+          <TouchableOpacity key={String(p.id)} onPress={() => loadAccountPermissions(String(p.id))}
+            style={[styles.assignRow, roleAccountId === String(p.id) && {borderColor: COLORS.primary, borderWidth: 2}]}>
+            <View style={{flex:1}}>
+              <Text style={{textAlign:'right',fontWeight:'800',color:COLORS.text}}>{p.full_name || p.username}</Text>
+              <Text style={{textAlign:'right',color:COLORS.muted,fontSize:12}}>اسم الدخول: {p.username} · الدور الأساسي: {p.role}</Text>
+            </View>
+            <Text style={{color: roleAccountId === String(p.id) ? COLORS.primary : COLORS.muted}}>{roleAccountId === String(p.id) ? '✓ محدد' : 'اختيار'}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {roleAccountId ? <>
+        <Text style={[styles.cardTitle,{marginTop:16}]}>الصلاحيات المستقلة</Text>
+        {permissionOptions.map(option => {
+          const checked = roleAccountPermissions.includes(option.key);
+          return <TouchableOpacity key={option.key} onPress={() => setRoleAccountPermissions(prev => checked ? prev.filter(x => x !== option.key) : [...prev, option.key])}
+            style={[styles.assignRow,{alignItems:'center'}]}>
+            <Text style={{fontSize:20,color:checked ? COLORS.success : COLORS.muted}}>{checked ? '☑' : '□'}</Text>
+            <Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text>
+          </TouchableOpacity>;
+        })}
+        <TouchableOpacity disabled={rolePermissionsLoading || rolePermissionsSaving} style={styles.primaryBtn} onPress={saveAccountPermissions}>
+          <Text style={styles.btnText}>{rolePermissionsLoading ? 'جارٍ تحميل الصلاحيات…' : rolePermissionsSaving ? 'جارٍ الحفظ…' : 'حفظ الصلاحيات'}</Text>
+        </TouchableOpacity>
+      </> : <Text style={styles.emptyText}>اختر حسابًا لعرض صلاحياته.</Text>}
+    </View>
+  );
+
   const renderRequestManagersAdmin = () => {
     return (
       <View>
@@ -1193,8 +1278,8 @@ export default function App() {
         <Text style={styles.helper}>إدارة المسؤولين، صلاحياتهم، ومسارات مسار الاعتمادات.</Text>
         <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}><Text style={styles.btnText}>تحديث قائمة المسؤولين والسيارات</Text></TouchableOpacity>
         <View style={{flexDirection: 'row-reverse', gap: 6, marginBottom: 15}}>
-          {['توزيع المسؤولين', 'قائمة المسؤولين', 'الصلاحيات', 'مسارات الطلبات'].map((tab, idx) => {
-            const keys = ['distribute', 'list', 'permissions', 'routes'];
+          {['توزيع المسؤولين', 'قائمة المسؤولين', 'الصلاحيات', 'مسارات الطلبات', 'أدوار الحسابات'].map((tab, idx) => {
+            const keys = ['distribute', 'list', 'permissions', 'routes', 'accountRoles'];
             const active = requestManagersTab === keys[idx];
             return (
               <TouchableOpacity key={keys[idx]} onPress={() => setRequestManagersTab(keys[idx])}
@@ -1288,6 +1373,7 @@ export default function App() {
             ))}
           </View>
         )}
+        {requestManagersTab === 'accountRoles' && isRequestApprover(currentUser) && renderAccountRoleManager()}
         {requestManagersTab === 'routes' && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>إدارة مسارات الطلبات</Text>
