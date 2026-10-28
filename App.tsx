@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.93.63';
-const APP_BUILD = '93';
+const APP_VERSION = '1.94.64';
+const APP_BUILD = '94';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -95,6 +95,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   
   const [fleet, setFleet] = useState<Vehicle[]>([]);
   const [stations, setStations] = useState<string[]>(['محطة الزبيدي', 'محطة الشركة', 'محطة نقدي']);
@@ -1193,8 +1197,9 @@ export default function App() {
     );
   };
 
+  // هذه الخيارات أدوار لمسار العمل، وليست permission_key داخل fleet_user_permissions.
+  // جدول fleet_workflow_assignments يقبل مفتاحًا واحدًا لكل دور؛ تعيين الدور لحساب جديد ينقله من الحساب السابق.
   const permissionOptions = [
-    { key: 'regular_user', label: 'حساب عادي' },
     { key: 'direct_manager', label: 'مسؤول مباشر' },
     { key: 'services_alnaqil', label: 'الخدمات الإدارية – النقيل' },
     { key: 'services_administration', label: 'الخدمات الإدارية – الإدارة' },
@@ -1204,42 +1209,48 @@ export default function App() {
     setRoleAccountId(profileId);
     setRolePermissionsLoading(true);
     try {
-      const { data, error } = await supabase.from('fleet_user_permissions')
-        .select('permission_key').eq('user_id', profileId);
+      const { data, error } = await supabase.from('fleet_workflow_assignments')
+        .select('assignment_key,user_id').in('assignment_key', permissionOptions.map(x => x.key));
       if (error) throw error;
-      setRoleAccountPermissions((data || []).map((x: any) => String(x.permission_key)));
+      setRoleAccountPermissions((data || [])
+        .filter((x: any) => String(x.user_id) === profileId)
+        .map((x: any) => String(x.assignment_key)));
     } catch (e: any) {
       setRoleAccountPermissions([]);
-      Alert.alert('تعذر تحميل الصلاحيات', e?.message || 'تحقق من تنفيذ ملف SQL وسياسات الجدول.');
+      Alert.alert('تعذر تحميل الأدوار', e?.message || 'تحقق من صلاحيات جدول fleet_workflow_assignments.');
     } finally { setRolePermissionsLoading(false); }
   };
 
   const saveAccountPermissions = async () => {
-    if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل صلاحياته.'); return; }
+    if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل أدواره.'); return; }
     setRolePermissionsSaving(true);
     try {
+      // إزالة الأدوار التي لم تعد محددة لهذا الحساب فقط، دون لمس الصلاحيات التفصيلية.
+      let cleanup = supabase.from('fleet_workflow_assignments').delete().eq('user_id', roleAccountId);
       if (roleAccountPermissions.length) {
-        const rows = roleAccountPermissions.map(permission_key => ({
-          user_id: roleAccountId, permission_key
-        }));
-        const { error } = await supabase.from('fleet_user_permissions')
-          .upsert(rows, { onConflict: 'user_id,permission_key' });
-        if (error) throw error;
+        cleanup = cleanup.not('assignment_key', 'in', `(${roleAccountPermissions.join(',')})`);
       }
-      let cleanup = supabase.from('fleet_user_permissions').delete().eq('user_id', roleAccountId);
-      if (roleAccountPermissions.length) cleanup = cleanup.not('permission_key', 'in', `(${roleAccountPermissions.join(',')})`);
       const { error: cleanupError } = await cleanup;
       if (cleanupError) throw cleanupError;
-      Alert.alert('تم الحفظ', 'حُفظت صلاحيات الحساب في قاعدة البيانات.');
+
+      if (roleAccountPermissions.length) {
+        const rows = roleAccountPermissions.map(assignment_key => ({
+          assignment_key, user_id: roleAccountId,
+        }));
+        const { error } = await supabase.from('fleet_workflow_assignments')
+          .upsert(rows, { onConflict: 'assignment_key' });
+        if (error) throw error;
+      }
+      Alert.alert('تم الحفظ', 'حُفظت أدوار مسار العمل. لم يتم تغيير الصلاحيات التفصيلية للحساب.');
     } catch (e: any) {
-      Alert.alert('فشل حفظ الصلاحيات', e?.message || 'تحقق من صلاحية system_admin وسياسات قاعدة البيانات.');
+      Alert.alert('فشل حفظ الأدوار', e?.message || 'تحقق من صلاحيات جدول fleet_workflow_assignments.');
     } finally { setRolePermissionsSaving(false); }
   };
 
   const renderAccountRoleManager = () => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>إدارة أدوار الحسابات</Text>
-      <Text style={styles.helper}>اختر أي حساب، ثم فعّل أكثر من صلاحية مستقلة. لا يغيّر هذا الاختيار الدور الأساسي للحساب.</Text>
+      <Text style={styles.helper}>اختر الحساب ثم حدّد أدوار سير العمل. الحساب العادي هو الحساب الذي لا يُسند إليه أي دور من هذه الأدوار. كل دور له حساب معيّن واحد على مستوى النظام؛ عند إسناده لحساب آخر ينتقل إليه.</Text>
       <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}>
         <Text style={styles.btnText}>تحديث قائمة الحسابات</Text>
       </TouchableOpacity>
@@ -1257,7 +1268,7 @@ export default function App() {
         ))}
       </ScrollView>
       {roleAccountId ? <>
-        <Text style={[styles.cardTitle,{marginTop:16}]}>الصلاحيات المستقلة</Text>
+        <Text style={[styles.cardTitle,{marginTop:16}]}>أدوار مسار العمل</Text>
         {permissionOptions.map(option => {
           const checked = roleAccountPermissions.includes(option.key);
           return <TouchableOpacity key={option.key} onPress={() => setRoleAccountPermissions(prev => checked ? prev.filter(x => x !== option.key) : [...prev, option.key])}
@@ -1266,10 +1277,11 @@ export default function App() {
             <Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text>
           </TouchableOpacity>;
         })}
+        <Text style={styles.helper}>لتعيين الحساب كمستخدم عادي، أزل التحديد عن الأدوار الثلاثة ثم احفظ.</Text>
         <TouchableOpacity disabled={rolePermissionsLoading || rolePermissionsSaving} style={styles.primaryBtn} onPress={saveAccountPermissions}>
-          <Text style={styles.btnText}>{rolePermissionsLoading ? 'جارٍ تحميل الصلاحيات…' : rolePermissionsSaving ? 'جارٍ الحفظ…' : 'حفظ الصلاحيات'}</Text>
+          <Text style={styles.btnText}>{rolePermissionsLoading ? 'جارٍ تحميل الأدوار…' : rolePermissionsSaving ? 'جارٍ الحفظ…' : 'حفظ الأدوار'}</Text>
         </TouchableOpacity>
-      </> : <Text style={styles.emptyText}>اختر حسابًا لعرض صلاحياته.</Text>}
+      </> : <Text style={styles.emptyText}>اختر حسابًا لعرض أدواره.</Text>}
     </View>
   );
 
@@ -2086,7 +2098,7 @@ export default function App() {
         {[
           {title: 'الوضع الداكن', icon: '🌙', isSwitch: true},
           {title: 'بيانات الموظف', icon: '👤', action: () => Alert.alert('بيانات الموظف', `الاسم: ${currentUser?.name}\nالمستخدم: ${currentUser?.username}\nالدور: ${currentUser?.role}`)},
-          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => Alert.alert('تغيير كلمة السر', 'قريباً تفعيل ميزة تغيير كلمة المرور.')},
+          {title: 'تغيير كلمة السر', icon: '🛡️', action: () => setPasswordModalVisible(true)},
           {title: 'قد يهمك', icon: '🛍️', action: () => Alert.alert('قد يهمك', 'لا توجد إشعارات أو عروض جديدة حالياً.')},
           {title: 'تحديث التطبيق', icon: '🔄', action: () => Alert.alert('التحديث', `أنت تستخدم أحدث إصدار (${APP_VERSION})`)},
           {title: 'مشاركة التطبيق', icon: '📤', action: () => Alert.alert('مشاركة', 'تم نسخ رابط التطبيق للحافظة.')},
@@ -2146,8 +2158,15 @@ export default function App() {
           <View style={styles.requestModalHeader}><Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text><TouchableOpacity onPress={() => { setServiceTypeModal(null); resetRequestForm(); }}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity></View>
           <ScrollView style={styles.requestFormScroll} contentContainerStyle={styles.requestFormContent} keyboardShouldPersistTaps="handled">
             <View style={styles.infoPill}><Text style={styles.infoPillText}>السيارة: {currentUser?.id}</Text><Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text></View>
-            <Text style={styles.helper}>جهة الإرسالية</Text>
-            {renderSelect('اختر الجهة', administrativeDestination, ['النقيل', 'الإدارة'], setAdministrativeDestination)}
+            <Text style={styles.label}>جهة الإرسالية — اختر واحدة</Text>
+            <View style={[styles.choiceRow, { flexDirection: 'row-reverse', flexWrap: 'wrap', marginBottom: 12 }]}>
+              {['النقيل', 'الإدارة'].map(destination => (
+                <TouchableOpacity key={destination} onPress={() => setAdministrativeDestination(destination)}
+                  style={[styles.choice, { minWidth: 120, alignItems: 'center' }, administrativeDestination === destination && styles.choiceActive]}>
+                  <Text style={[styles.choiceText, administrativeDestination === destination && styles.choiceTextActive]}>{destination}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             
             {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}</>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
@@ -2260,6 +2279,29 @@ export default function App() {
             </TouchableOpacity>
           ))}
         </ScrollView>
+
+        <Modal visible={passwordModalVisible} transparent animationType="slide" onRequestClose={() => setPasswordModalVisible(false)}>
+          <View style={styles.modalOverlay}><View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>تغيير كلمة المرور</Text>
+            <TextInput style={styles.input} placeholder="كلمة المرور الحالية" secureTextEntry value={currentPasswordInput} onChangeText={setCurrentPasswordInput} textAlign="right" />
+            <TextInput style={styles.input} placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)" secureTextEntry value={newPasswordInput} onChangeText={setNewPasswordInput} textAlign="right" />
+            <TextInput style={styles.input} placeholder="تأكيد كلمة المرور الجديدة" secureTextEntry value={confirmPasswordInput} onChangeText={setConfirmPasswordInput} textAlign="right" />
+            <TouchableOpacity style={styles.primaryBtn} onPress={async () => {
+              if (!currentPasswordInput || newPasswordInput.length < 8 || newPasswordInput !== confirmPasswordInput) { Alert.alert('تحقق من البيانات','أدخل كلمة المرور الحالية، واجعل الجديدة 8 أحرف على الأقل، وتأكد من تطابقها.'); return; }
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user?.email) throw new Error('تعذر تحديد الحساب الحالي.');
+                const check = await supabase.auth.signInWithPassword({ email: user.email, password: currentPasswordInput });
+                if (check.error) throw new Error('كلمة المرور الحالية غير صحيحة.');
+                const update = await supabase.auth.updateUser({ password: newPasswordInput });
+                if (update.error) throw update.error;
+                setPasswordModalVisible(false); setCurrentPasswordInput(''); setNewPasswordInput(''); setConfirmPasswordInput('');
+                Alert.alert('تم','تم تغيير كلمة المرور بنجاح.');
+              } catch (e: any) { Alert.alert('تعذر تغيير كلمة المرور', e?.message || 'حدث خطأ غير متوقع.'); }
+            }}><Text style={styles.btnText}>حفظ كلمة المرور</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPasswordModalVisible(false)}><Text style={styles.btnText}>إلغاء</Text></TouchableOpacity>
+          </View></View>
+        </Modal>
 
         <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingBottom:110}}>
           {adminTab === 'requests' ? renderRequestsAdmin() : null}
