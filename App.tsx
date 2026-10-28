@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.91.61';
-const APP_BUILD = '91';
+const APP_VERSION = '1.92.62';
+const APP_BUILD = '92';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
