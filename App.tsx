@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.92.62';
-const APP_BUILD = '92';
+const APP_VERSION = '1.93.63';
+const APP_BUILD = '93';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -44,6 +44,7 @@ type RequestItem = {
   client?: string; serviceDescription?: string; workflow?: string; approvalTrail?: string[];
   startDate?: string; endDate?: string; returnDate?: string; daysCount?: number;
   destination?: string; custody?: number;
+  administrativeDestination?: string;
   directManagerStatus?: string;
   servicesStatus?: string;
   applicantId?: string;
@@ -158,6 +159,7 @@ export default function App() {
   const [selectedEngineer, setSelectedEngineer] = useState(engineers[0]);
   const [selectedClient, setSelectedClient] = useState(clients[0]);
   const [selectedUnit, setSelectedUnit] = useState('دبة');
+  const [administrativeDestination, setAdministrativeDestination] = useState('النقيل');
   
   const [reqQty, setReqQty] = useState('');
   const [currOdometer, setCurrOdometer] = useState('');
@@ -239,7 +241,7 @@ export default function App() {
       workshop: item.workshop, engineer: item.engineer, faultType: item.faultType,
       requiredWork: item.requiredWork, client: item.client,
       serviceDescription: item.serviceDescription, approvalTrail: item.approvalTrail,
-      destination: item.destination, startDate: item.startDate, endDate: item.endDate,
+      destination: item.destination, administrativeDestination: item.administrativeDestination, startDate: item.startDate, endDate: item.endDate,
       returnDate: item.returnDate, daysCount: item.daysCount, custody: item.custody,
       imageUri: item.imageUri
     }
@@ -304,7 +306,7 @@ export default function App() {
             itemName: extra.itemName, prevOdo: extra.prevOdo, distance: extra.distance,
             workshop: extra.workshop, engineer: extra.engineer, faultType: extra.faultType,
             requiredWork: extra.requiredWork, client: extra.client, serviceDescription: extra.serviceDescription,
-            approvalTrail: extra.approvalTrail || [], destination: extra.destination,
+            approvalTrail: extra.approvalTrail || [], destination: extra.destination, administrativeDestination: r.administrative_destination || extra.administrativeDestination || 'النقيل',
             startDate: extra.startDate, endDate: extra.endDate, returnDate: extra.returnDate,
             daysCount: extra.daysCount, custody: extra.custody,
             directManagerStatus: r.direct_manager_status || 'تحت المراجعة',
@@ -450,6 +452,7 @@ export default function App() {
     setSelectedBattery(batteries[0] || ''); setSelectedPart(parts[0] || '');
     setSelectedTire(tires[0] || ''); setSelectedMaintenance(maintenanceItems[0] || '');
     setSelectedUnit('دبة');
+    setAdministrativeDestination('النقيل');
     setMaintenanceServiceSubModal(null);
   };
 
@@ -517,7 +520,7 @@ export default function App() {
       id: tempId, vehicleId: currentUser.id, driver: currentUser.driver || currentUser.name || '',
       type: serviceTypeModal, date: TODAY(), qty: 1, total: 0,
       status: 'تحت المراجعة', workflow: 'المسؤول المباشر',
-      notes: reqNotes, imageUri: reqImage, approvalTrail: ['أرسل السائق الطلب'],
+      notes: reqNotes, imageUri: reqImage, administrativeDestination, approvalTrail: ['أرسل السائق الطلب'],
     };
 
     if (serviceTypeModal === 'وقود') {
@@ -557,7 +560,7 @@ export default function App() {
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
         total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
-        notes: makeStoredNotes(item), image_url: null, approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
+        notes: makeStoredNotes(item), image_url: null, administrative_destination: administrativeDestination, approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
         direct_manager_status: 'تحت المراجعة', services_status: 'تحت المراجعة'
       }).select();
       if (error) throw error;
@@ -1217,8 +1220,7 @@ export default function App() {
     try {
       if (roleAccountPermissions.length) {
         const rows = roleAccountPermissions.map(permission_key => ({
-          user_id: roleAccountId, permission_key, granted_by: currentUser?.authId || null,
-          updated_at: new Date().toISOString()
+          user_id: roleAccountId, permission_key
         }));
         const { error } = await supabase.from('fleet_user_permissions')
           .upsert(rows, { onConflict: 'user_id,permission_key' });
@@ -1920,6 +1922,7 @@ export default function App() {
                   <Text style={styles.cardTitle}>{r.type}</Text>
                   <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
                   <Text style={styles.cardText}>التكلفة الإجمالية: {money(r.total)}</Text>
+                  <Text style={styles.cardText}>جهة الإرسالية: {r.administrativeDestination || 'النقيل'}</Text>
                   
                   {r.type === 'إرسالية صيانة' && isApproved && (
                     <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB', marginTop: 8}]} onPress={() => handlePreviewPrintCarRepair(r)}>
@@ -2143,6 +2146,8 @@ export default function App() {
           <View style={styles.requestModalHeader}><Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text><TouchableOpacity onPress={() => { setServiceTypeModal(null); resetRequestForm(); }}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity></View>
           <ScrollView style={styles.requestFormScroll} contentContainerStyle={styles.requestFormContent} keyboardShouldPersistTaps="handled">
             <View style={styles.infoPill}><Text style={styles.infoPillText}>السيارة: {currentUser?.id}</Text><Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text></View>
+            <Text style={styles.helper}>جهة الإرسالية</Text>
+            {renderSelect('اختر الجهة', administrativeDestination, ['النقيل', 'الإدارة'], setAdministrativeDestination)}
             
             {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}</>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
