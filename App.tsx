@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.94.64';
-const APP_BUILD = '94';
+const APP_VERSION = '1.95.65';
+const APP_BUILD = '95';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -48,6 +48,8 @@ type RequestItem = {
   directManagerStatus?: string;
   servicesStatus?: string;
   applicantId?: string;
+  assignedTo?: string;
+  currentStep?: string;
 };
 
 type PermissionSet = {
@@ -129,6 +131,20 @@ export default function App() {
   const [roleAccountPermissions, setRoleAccountPermissions] = useState<string[]>([]);
   const [rolePermissionsLoading, setRolePermissionsLoading] = useState(false);
   const [rolePermissionsSaving, setRolePermissionsSaving] = useState(false);
+  const [accountPermissionKeys, setAccountPermissionKeys] = useState<string[]>([]);
+  const [accountManagerId, setAccountManagerId] = useState('');
+  const REQUEST_PERMISSION_OPTIONS = [
+    {key:'request_fuel', label:'طلب وقود'}, {key:'request_oils', label:'طلب زيوت'},
+    {key:'request_batteries', label:'طلب بطاريات'}, {key:'request_parts', label:'طلب قطع غيار'},
+    {key:'request_maintenance', label:'إرسالية صيانة'}, {key:'request_tires', label:'طلب إطارات'},
+    {key:'request_puncture', label:'إرسالية بنشر'},
+  ];
+  const APPROVAL_PERMISSION_OPTIONS = [
+    {key:'approve_fuel', label:'اعتماد الوقود'}, {key:'approve_oils', label:'اعتماد الزيوت'},
+    {key:'approve_batteries', label:'اعتماد البطاريات'}, {key:'approve_parts', label:'اعتماد قطع الغيار'},
+    {key:'approve_maintenance', label:'اعتماد الصيانة'}, {key:'approve_tires', label:'اعتماد الإطارات'},
+    {key:'approve_puncture', label:'اعتماد البنشر'},
+  ];
   const [workflowRoutes, setWorkflowRoutes] = useState<string[]>(['المسؤول المباشر', 'الخدمات الإدارية', 'المسؤول النهائي']);
   const [newRouteName, setNewRouteName] = useState('');
   const [userTab, setUserTab] = useState('service');
@@ -255,7 +271,18 @@ export default function App() {
     try {
       setLoadingDb(true);
       const { data: pData, error: pError } = await supabase.from('profiles').select('id, username, full_name, role, phone, is_active');
-      if (!pError && pData) setManagerProfiles(pData);
+      if (!pError && pData) {
+        const { data: accountRoleRows, error: accountRoleError } = await supabase
+          .from('fleet_account_roles').select('user_id,role_key');
+        // Ordinary users may only read their own role under RLS; never block their normal data loading.
+        const mappedProfiles = (pData || []).map((profile: any) => ({
+          ...profile,
+          accountRoleKeys: !accountRoleError ? (accountRoleRows || [])
+            .filter((row: any) => String(row.user_id) === String(profile.id))
+            .map((row: any) => String(row.role_key)) : []
+        }));
+        setManagerProfiles(mappedProfiles);
+      }
       const profilesForLookup = pData || [];
       const { data: dData, error: dError } = await supabase
         .from('drivers')
@@ -297,9 +324,9 @@ export default function App() {
           const extra = stored.appFields || {};
           const stage = r.status === 'مرفوض' ? 'تم رفض الطلب'
             : r.status === 'تمت الموافقة' ? 'تمت الموافقة'
-            : (r.direct_manager_status === 'موافق')
-              ? ((r.services_status === 'موافق') ? 'المسؤول' : 'الخدمات الإدارية')
-              : 'المسؤول المباشر';
+            : r.current_step || ((r.direct_manager_status === 'موافق')
+              ? ((r.services_status === 'موافق') ? 'مكتمل' : 'الخدمات الإدارية')
+              : 'المسؤول المباشر');
           return {
             id: String(r.id), approvalNumber: r.approval_number || '', vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
             type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
@@ -315,7 +342,7 @@ export default function App() {
             daysCount: extra.daysCount, custody: extra.custody,
             directManagerStatus: r.direct_manager_status || 'تحت المراجعة',
             servicesStatus: r.services_status || 'تحت المراجعة',
-            applicantId: r.applicant_id || ''
+            applicantId: r.applicant_id || '', assignedTo: r.assigned_to || '', currentStep: r.current_step || ''
           };
         });
         setRequests(mappedReqs);
@@ -356,6 +383,14 @@ export default function App() {
         .eq('id', user.id).maybeSingle();
       
       if (!profile) return;
+      const [{ data: permissionRows, error: permissionsError }, { data: fleetRoleRows, error: fleetRolesError }] = await Promise.all([
+        supabase.from('fleet_user_permissions').select('permission_key,enabled').eq('user_id', user.id),
+        supabase.from('fleet_account_roles').select('role_key').eq('user_id', user.id)
+      ]);
+      if (permissionsError) throw permissionsError;
+      if (fleetRolesError) throw fleetRolesError;
+      const permissionKeys = (permissionRows || []).filter((x: any) => x.enabled === true).map((x: any) => String(x.permission_key));
+      const fleetRoleKeys = (fleetRoleRows || []).map((x: any) => String(x.role_key));
       const roleRaw = String(profile.role || '').toLowerCase();
       const isAdmin = ['admin', 'administrator', 'manager', 'services_manager', 'direct_manager', 'request_approver', 'system_admin', 'مسؤول', 'مدير', 'مدير عام', 'مدير الخدمات', 'مسؤول الخدمات'].includes(roleRaw);
       
@@ -363,7 +398,7 @@ export default function App() {
         let extraRoles: string[] = [];
         const { data: roleRows } = await supabase.from('user_roles').select('role').eq('user_id', user.id);
         if (roleRows) extraRoles = roleRows.map((row: any) => String(row.role || '').toLowerCase());
-        setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: user.id, username: profile.username, name: profile.full_name || profile.username, profile, extraRoles });
+        setCurrentUser({ role: roleRaw === 'admin' ? 'admin' : 'manager', authId: user.id, username: profile.username, name: profile.full_name || profile.username, profile, extraRoles, fleetRoleKeys, permissionKeys });
       } else {
         const carNumber = String(profile.username || '');
         const { data: vehicle } = await supabase.from('vehicles').select('*').eq('car_number', carNumber).maybeSingle();
@@ -382,7 +417,7 @@ export default function App() {
           chassisNo: vehicle?.chassis_number || '', 
           ownership: 'شركة'
         };
-        setCurrentUser({ role: 'driver', authId: user.id, username: profile.username, id: v.carNumber, ...v, profile });
+        setCurrentUser({ role: 'driver', authId: user.id, username: profile.username, id: v.carNumber, ...v, profile, fleetRoleKeys, permissionKeys });
         setEditDriverName(v.driver);
       }
     } catch (err) {
@@ -508,6 +543,17 @@ export default function App() {
   // دالة إرسال الطلب المحدثة بالجزء المطلوب
   const submitRequest = async () => {
     if (!currentUser || !serviceTypeModal) return;
+    const servicePermissionMap: Record<string, string> = {
+      'وقود': 'request_fuel', 'زيوت': 'request_oils', 'بطاريات': 'request_batteries',
+      'قطع غيار': 'request_parts', 'إطارات': 'request_tires', 'صيانة': 'request_maintenance',
+      'إرسالية صيانة': 'request_maintenance', 'إرسالية خدمات بنشر': 'request_puncture'
+    };
+    const requiredRequestPermission = servicePermissionMap[serviceTypeModal];
+    const activePermissionKeys = Array.isArray(currentUser?.permissionKeys) ? currentUser.permissionKeys : [];
+    if (!requiredRequestPermission || !activePermissionKeys.includes(requiredRequestPermission)) {
+      Alert.alert('الصلاحية غير متاحة', 'لم تُمنح لحسابك صلاحية إنشاء هذا النوع من الطلبات.');
+      return;
+    }
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
@@ -559,12 +605,25 @@ export default function App() {
     }
 
     try {
+      // Resolve the applicant's assigned direct manager before inserting the request.
+      const { data: managerAssignment, error: managerAssignmentError } = await supabase
+        .from('fleet_user_manager_assignments')
+        .select('manager_user_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (managerAssignmentError) throw managerAssignmentError;
+      if (!managerAssignment?.manager_user_id) {
+        Alert.alert('لا يمكن إرسال الطلب', 'لم يتم تعيين مسؤول مباشر لحسابك بعد. يرجى التواصل مع ميثاق2 لتعيين المسؤول أولاً.');
+        return;
+      }
       const { data, error } = await supabase.from('requests').insert({
         vehicle_id: item.vehicleId, applicant_id: user.id,
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
         total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
-        notes: makeStoredNotes(item), image_url: null, administrative_destination: administrativeDestination, approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
+        notes: makeStoredNotes(item), image_url: null, administrative_destination: administrativeDestination,
+        current_step: 'المسؤول المباشر', assigned_to: managerAssignment.manager_user_id,
+        approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
         direct_manager_status: 'تحت المراجعة', services_status: 'تحت المراجعة'
       }).select();
       if (error) throw error;
@@ -1105,6 +1164,23 @@ export default function App() {
     );
   };
 
+  const canCurrentUserApproveRequest = (r: RequestItem) => {
+    const roleKeys: string[] = Array.isArray(currentUser?.fleetRoleKeys) ? currentUser.fleetRoleKeys : [];
+    const currentId = String(currentUser?.authId || currentUser?.profile?.id || '');
+    const permissionByType: Record<string, string> = {
+      'وقود': 'approve_fuel', 'زيوت': 'approve_oils', 'بطاريات': 'approve_batteries',
+      'قطع غيار': 'approve_parts', 'إطارات': 'approve_tires', 'صيانة': 'approve_maintenance',
+      'إرسالية صيانة': 'approve_maintenance', 'إرسالية خدمات بنشر': 'approve_puncture'
+    };
+    const needed = permissionByType[r.type];
+    const hasApprovalPermission = !!needed && Array.isArray(currentUser?.permissionKeys) && currentUser.permissionKeys.includes(needed);
+    if (!hasApprovalPermission || !currentId || !r.assignedTo || String(r.assignedTo) !== currentId) return false;
+    if ((r.currentStep || r.workflow) === 'المسؤول المباشر') return roleKeys.includes('direct_manager');
+    if ((r.currentStep || r.workflow) === 'الخدمات الإدارية - النقيل') return roleKeys.includes('services_alnaqil');
+    if ((r.currentStep || r.workflow) === 'الخدمات الإدارية - الإدارة') return roleKeys.includes('services_administration');
+    return false;
+  };
+
   const renderRequestsAdmin = () => {
     const requestTabs: Array<[string,string]> = [['وقود','وقود'],['زيوت','زيوت'],['قطع غيار','قطع غيار'],['صيانة','صيانة'],['إطارات','إطارات'],['بطاريات','بطاريات'],['إرسالية صيانة','إرسالية صيانة'],['إرسالية خدمات بنشر','إرسالية خدمات بنشر']];
     
@@ -1112,26 +1188,20 @@ export default function App() {
       if (r.type !== adminRequestTab) return false;
       const isFinalApprover = isRequestApprover(currentUser);
       if (isFinalApprover) {
-        // ميثاق يرى الطلبات المحالة للخدمات وكذلك الطلبات المعتمدة نهائياً حتى يتمكن من طباعتها.
-        return (
-          r.directManagerStatus === 'موافق' &&
-          r.servicesStatus !== 'مرفوض' &&
-          r.status !== 'مرفوض'
-        );
+        // ميثاق2 يمكنه المتابعة الإدارية، لكن الاعتماد نفسه يتطلب دور الوجهة والصلاحية والتعيين.
+        return r.directManagerStatus === 'موافق' && r.status !== 'مرفوض';
       }
-      const isPendingDirectApproval =
-        !r.directManagerStatus ||
-        ['تحت المراجعة', 'بانتظار المراجعة', 'قيد المراجعة'].includes(r.directManagerStatus);
-      const requestVehicle = fleet.find((v: any) => String(v.id) === String(r.vehicleId));
-      const managerAssigned = String(requestVehicle?.directManagerId || '');
+      const roleKeys: string[] = Array.isArray(currentUser?.fleetRoleKeys) ? currentUser.fleetRoleKeys : [];
+      const currentId = String(currentUser?.authId || currentUser?.profile?.id || '');
+      if (roleKeys.includes('services_alnaqil') || roleKeys.includes('services_administration')) {
+        const expectedStep = roleKeys.includes('services_alnaqil') ? 'الخدمات الإدارية - النقيل' : 'الخدمات الإدارية - الإدارة';
+        return (r.currentStep || r.workflow) === expectedStep && String(r.assignedTo || '') === currentId && r.status !== 'مرفوض' && r.status !== 'تمت الموافقة';
+      }
       const currentProfileId = String(currentUser?.authId || currentUser?.profile?.id || '');
-      const assignedToThisManager = !managerAssigned || managerAssigned === currentProfileId ||
-        String(requestVehicle?.directManager || '').trim() === String(currentUser?.name || '').trim() ||
-        String(requestVehicle?.directManager || '').trim() === String(currentUser?.username || '').trim();
-      return (
-        isPendingDirectApproval && assignedToThisManager &&
-        r.status !== 'مرفوض' && r.status !== 'تمت الموافقة'
-      );
+      const isDirectManagerStage = (r.currentStep || r.workflow) === 'المسؤول المباشر';
+      const isAssignedToCurrentAccount = String(r.assignedTo || '') === currentProfileId;
+      return isDirectManagerStage && isAssignedToCurrentAccount &&
+        r.status !== 'مرفوض' && r.status !== 'تمت الموافقة';
     });
 
     return (
@@ -1185,7 +1255,7 @@ export default function App() {
               </View>
             )}
 
-            {r.status !== 'تمت الموافقة' && r.status !== 'مرفوض' && (
+            {r.status !== 'تمت الموافقة' && r.status !== 'مرفوض' && canCurrentUserApproveRequest(r) && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.success}]} onPress={() => advanceRequest(r.id)}><Text style={styles.btnText}>اعتماد / قبول</Text></TouchableOpacity>
                 <TouchableOpacity style={[styles.actionBtn,{backgroundColor:COLORS.danger}]} onPress={() => rejectRequest(r.id)}><Text style={styles.btnText}>رفض</Text></TouchableOpacity>
@@ -1197,91 +1267,98 @@ export default function App() {
     );
   };
 
-  // هذه الخيارات أدوار لمسار العمل، وليست permission_key داخل fleet_user_permissions.
-  // جدول fleet_workflow_assignments يقبل مفتاحًا واحدًا لكل دور؛ تعيين الدور لحساب جديد ينقله من الحساب السابق.
+  // أدوار الحسابات مستقلة عن مفاتيح الصلاحيات التفصيلية.
   const permissionOptions = [
+    { key: 'regular_user', label: 'مستخدم عادي' },
     { key: 'direct_manager', label: 'مسؤول مباشر' },
-    { key: 'services_alnaqil', label: 'الخدمات الإدارية – النقيل' },
-    { key: 'services_administration', label: 'الخدمات الإدارية – الإدارة' },
+    { key: 'services_alnaqil', label: 'مسؤول الخدمات الإدارية – النقيل (حساب واحد فقط)' },
+    { key: 'services_administration', label: 'مسؤول الخدمات الإدارية – الإدارة (حساب واحد فقط)' },
   ];
 
   const loadAccountPermissions = async (profileId: string) => {
     setRoleAccountId(profileId);
     setRolePermissionsLoading(true);
     try {
-      const { data, error } = await supabase.from('fleet_workflow_assignments')
-        .select('assignment_key,user_id').in('assignment_key', permissionOptions.map(x => x.key));
-      if (error) throw error;
-      setRoleAccountPermissions((data || [])
-        .filter((x: any) => String(x.user_id) === profileId)
-        .map((x: any) => String(x.assignment_key)));
-    } catch (e: any) {
-      setRoleAccountPermissions([]);
-      Alert.alert('تعذر تحميل الأدوار', e?.message || 'تحقق من صلاحيات جدول fleet_workflow_assignments.');
+      const [rolesRes, permsRes, mgrRes] = await Promise.all([
+        supabase.from('fleet_account_roles').select('role_key').eq('user_id', profileId),
+        supabase.from('fleet_user_permissions').select('permission_key,enabled').eq('user_id', profileId),
+        supabase.from('fleet_user_manager_assignments').select('manager_user_id').eq('user_id', profileId).maybeSingle()
+      ]);
+      if (rolesRes.error) throw rolesRes.error;
+      if (permsRes.error) throw permsRes.error;
+      if (mgrRes.error) throw mgrRes.error;
+      setRoleAccountPermissions((rolesRes.data || []).map((x:any)=>String(x.role_key)));
+      setAccountPermissionKeys((permsRes.data || []).filter((x:any)=>x.enabled === true).map((x:any)=>String(x.permission_key)));
+      setAccountManagerId(String(mgrRes.data?.manager_user_id || ''));
+    } catch (e:any) {
+      Alert.alert('تعذر تحميل إعدادات الحساب', e?.message || 'تحقق من تشغيل ملف SQL المرفق.');
     } finally { setRolePermissionsLoading(false); }
   };
 
   const saveAccountPermissions = async () => {
-    if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل أدواره.'); return; }
+    if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل إعداداته.'); return; }
     setRolePermissionsSaving(true);
     try {
-      // إزالة الأدوار التي لم تعد محددة لهذا الحساب فقط، دون لمس الصلاحيات التفصيلية.
-      let cleanup = supabase.from('fleet_workflow_assignments').delete().eq('user_id', roleAccountId);
-      if (roleAccountPermissions.length) {
-        cleanup = cleanup.not('assignment_key', 'in', `(${roleAccountPermissions.join(',')})`);
-      }
-      const { error: cleanupError } = await cleanup;
-      if (cleanupError) throw cleanupError;
-
-      if (roleAccountPermissions.length) {
-        const rows = roleAccountPermissions.map(assignment_key => ({
-          assignment_key, user_id: roleAccountId,
-        }));
-        const { error } = await supabase.from('fleet_workflow_assignments')
-          .upsert(rows, { onConflict: 'assignment_key' });
+      const roleRows = roleAccountPermissions.map(role_key => ({user_id: roleAccountId, role_key}));
+      const {error: delRolesError} = await supabase.from('fleet_account_roles').delete().eq('user_id', roleAccountId);
+      if (delRolesError) throw delRolesError;
+      if (roleRows.length) {
+        const {error} = await supabase.from('fleet_account_roles').upsert(roleRows,{onConflict:'user_id,role_key'});
         if (error) throw error;
       }
-      Alert.alert('تم الحفظ', 'حُفظت أدوار مسار العمل. لم يتم تغيير الصلاحيات التفصيلية للحساب.');
-    } catch (e: any) {
-      Alert.alert('فشل حفظ الأدوار', e?.message || 'تحقق من صلاحيات جدول fleet_workflow_assignments.');
+      if (accountManagerId) {
+        const {error} = await supabase.from('fleet_user_manager_assignments').upsert(
+          {user_id:roleAccountId, manager_user_id:accountManagerId, updated_by:currentUser?.authId || null},
+          {onConflict:'user_id'});
+        if (error) throw error;
+      } else {
+        const {error} = await supabase.from('fleet_user_manager_assignments').delete().eq('user_id',roleAccountId);
+        if (error) throw error;
+      }
+      const allKeys = [...REQUEST_PERMISSION_OPTIONS.map((x:any)=>x.key), ...APPROVAL_PERMISSION_OPTIONS.map((x:any)=>x.key)];
+      const permissionRows = allKeys.map(permission_key => ({
+        user_id:roleAccountId, permission_key, enabled:accountPermissionKeys.includes(permission_key),
+        updated_by:currentUser?.authId || null
+      }));
+      const {error: permError} = await supabase.from('fleet_user_permissions').upsert(permissionRows,{onConflict:'user_id,permission_key'});
+      if (permError) throw permError;
+      Alert.alert('تم الحفظ','تم حفظ أدوار الحساب والمسؤول المباشر وصلاحيات الطلب والاعتماد.');
+    } catch (e:any) {
+      Alert.alert('فشل الحفظ', e?.message || 'تحقق من تشغيل ملف SQL المرفق وصلاحيات الجداول.');
     } finally { setRolePermissionsSaving(false); }
   };
 
   const renderAccountRoleManager = () => (
     <View style={styles.card}>
-      <Text style={styles.sectionTitle}>إدارة أدوار الحسابات</Text>
-      <Text style={styles.helper}>اختر الحساب ثم حدّد أدوار سير العمل. الحساب العادي هو الحساب الذي لا يُسند إليه أي دور من هذه الأدوار. كل دور له حساب معيّن واحد على مستوى النظام؛ عند إسناده لحساب آخر ينتقل إليه.</Text>
-      <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}>
-        <Text style={styles.btnText}>تحديث قائمة الحسابات</Text>
-      </TouchableOpacity>
+      <Text style={styles.sectionTitle}>إدارة أدوار وصلاحيات الحسابات</Text>
+      <Text style={styles.helper}>يمكن للحساب الجمع بين أكثر من دور. جهة الخدمات الإدارية لا تُسند إلا لحساب واحد لكل جهة. حدد الحساب ثم عيّن المسؤول المباشر والصلاحيات.</Text>
+      <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}><Text style={styles.btnText}>تحديث قائمة الحسابات</Text></TouchableOpacity>
       <Text style={styles.cardTitle}>الحساب</Text>
-      <ScrollView style={{maxHeight:260}} nestedScrollEnabled>
-        {managerProfiles.filter((p: any) => p.is_active !== false).map((p: any) => (
-          <TouchableOpacity key={String(p.id)} onPress={() => loadAccountPermissions(String(p.id))}
-            style={[styles.assignRow, roleAccountId === String(p.id) && {borderColor: COLORS.primary, borderWidth: 2}]}>
+      <ScrollView style={{maxHeight:240}} nestedScrollEnabled>
+        {managerProfiles.filter((p:any)=>p.is_active !== false).map((p:any)=>(
+          <TouchableOpacity key={String(p.id)} onPress={()=>loadAccountPermissions(String(p.id))}
+            style={[styles.assignRow,roleAccountId===String(p.id)&&{borderColor:COLORS.primary,borderWidth:2}]}>
             <View style={{flex:1}}>
-              <Text style={{textAlign:'right',fontWeight:'800',color:COLORS.text}}>{p.full_name || p.username}</Text>
-              <Text style={{textAlign:'right',color:COLORS.muted,fontSize:12}}>اسم الدخول: {p.username} · الدور الأساسي: {p.role}</Text>
-            </View>
-            <Text style={{color: roleAccountId === String(p.id) ? COLORS.primary : COLORS.muted}}>{roleAccountId === String(p.id) ? '✓ محدد' : 'اختيار'}</Text>
+              <Text style={{textAlign:'right',fontWeight:'800',color:COLORS.text}}>{p.full_name||p.username}</Text>
+              <Text style={{textAlign:'right',color:COLORS.muted,fontSize:12}}>اسم الدخول: {p.username} · {p.role}</Text>
+            </View><Text style={{color:roleAccountId===String(p.id)?COLORS.primary:COLORS.muted}}>{roleAccountId===String(p.id)?'✓ محدد':'اختيار'}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
       {roleAccountId ? <>
-        <Text style={[styles.cardTitle,{marginTop:16}]}>أدوار مسار العمل</Text>
-        {permissionOptions.map(option => {
-          const checked = roleAccountPermissions.includes(option.key);
-          return <TouchableOpacity key={option.key} onPress={() => setRoleAccountPermissions(prev => checked ? prev.filter(x => x !== option.key) : [...prev, option.key])}
-            style={[styles.assignRow,{alignItems:'center'}]}>
-            <Text style={{fontSize:20,color:checked ? COLORS.success : COLORS.muted}}>{checked ? '☑' : '□'}</Text>
-            <Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text>
-          </TouchableOpacity>;
-        })}
-        <Text style={styles.helper}>لتعيين الحساب كمستخدم عادي، أزل التحديد عن الأدوار الثلاثة ثم احفظ.</Text>
-        <TouchableOpacity disabled={rolePermissionsLoading || rolePermissionsSaving} style={styles.primaryBtn} onPress={saveAccountPermissions}>
-          <Text style={styles.btnText}>{rolePermissionsLoading ? 'جارٍ تحميل الأدوار…' : rolePermissionsSaving ? 'جارٍ الحفظ…' : 'حفظ الأدوار'}</Text>
-        </TouchableOpacity>
-      </> : <Text style={styles.emptyText}>اختر حسابًا لعرض أدواره.</Text>}
+        <Text style={[styles.cardTitle,{marginTop:14}]}>المسؤول المباشر لهذا الحساب</Text>
+        <View style={{flexDirection:'row-reverse',flexWrap:'wrap',gap:7}}>
+          <TouchableOpacity style={[styles.choice,!accountManagerId&&styles.choiceActive]} onPress={()=>setAccountManagerId('')}><Text style={styles.choiceText}>بدون مسؤول</Text></TouchableOpacity>
+          {managerProfiles.filter((p:any)=>p.is_active!==false && String(p.id)!==roleAccountId && (p.accountRoleKeys || []).includes('direct_manager')).map((p:any)=><TouchableOpacity key={String(p.id)} style={[styles.choice,accountManagerId===String(p.id)&&styles.choiceActive]} onPress={()=>setAccountManagerId(String(p.id))}><Text style={styles.choiceText}>{p.full_name||p.username}</Text></TouchableOpacity>)}
+        </View>
+        <Text style={[styles.cardTitle,{marginTop:14}]}>أدوار الحساب</Text>
+        {permissionOptions.map(option=>{const checked=roleAccountPermissions.includes(option.key);return <TouchableOpacity key={option.key} onPress={()=>setRoleAccountPermissions(prev=>checked?prev.filter(x=>x!==option.key):[...prev,option.key])} style={[styles.assignRow,{alignItems:'center'}]}><Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':'□'}</Text><Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text></TouchableOpacity>;})}
+        <Text style={[styles.cardTitle,{marginTop:14}]}>أنواع الطلبات المسموح بإنشائها</Text>
+        {REQUEST_PERMISSION_OPTIONS.map((o:any)=>{const checked=accountPermissionKeys.includes(o.key);return <TouchableOpacity key={o.key} onPress={()=>setAccountPermissionKeys(prev=>checked?prev.filter(x=>x!==o.key):[...prev,o.key])} style={[styles.assignRow,{alignItems:'center'}]}><Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':'□'}</Text><Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{o.label}</Text></TouchableOpacity>;})}
+        <Text style={[styles.cardTitle,{marginTop:14}]}>أنواع الطلبات التي يوافق عليها هذا المسؤول</Text>
+        {APPROVAL_PERMISSION_OPTIONS.map((o:any)=>{const checked=accountPermissionKeys.includes(o.key);return <TouchableOpacity key={o.key} onPress={()=>setAccountPermissionKeys(prev=>checked?prev.filter(x=>x!==o.key):[...prev,o.key])} style={[styles.assignRow,{alignItems:'center'}]}><Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':'□'}</Text><Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{o.label}</Text></TouchableOpacity>;})}
+        <TouchableOpacity disabled={rolePermissionsLoading||rolePermissionsSaving} style={styles.primaryBtn} onPress={saveAccountPermissions}><Text style={styles.btnText}>{rolePermissionsSaving?'جارٍ الحفظ…':'حفظ إعدادات الحساب'}</Text></TouchableOpacity>
+      </> : <Text style={styles.emptyText}>اختر حسابًا لتعديل أدواره وصلاحياته.</Text>}
     </View>
   );
 
@@ -1908,7 +1985,13 @@ export default function App() {
         {subView === 'create' ? (
           <View>
             <Text style={styles.sectionTitle}>الخدمات والطلبات</Text>
-            {['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'إطارات', 'إرسالية صيانة وخدمات'].map((type, index) => (
+            {(['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'إطارات', 'إرسالية صيانة وخدمات'] as string[]).filter(type => {
+              const keyByType: Record<string,string> = {'وقود':'request_fuel','زيوت':'request_oils','بطاريات':'request_batteries','قطع غيار':'request_parts','إطارات':'request_tires','إرسالية صيانة وخدمات':'request_maintenance'};
+              const k = keyByType[type];
+              const rows = (currentUser?.permissionKeys || currentUser?.permissions || []) as any[];
+              if (!k || !Array.isArray(rows)) return false;
+              return rows.includes(k) || rows.some((x:any)=>x?.permission_key===k && x?.enabled===true);
+            }).map((type, index) => (
               <TouchableOpacity key={type} style={styles.serviceCard} onPress={() => { setSelectedServiceScreenType(type); setServiceScreenMode('create'); }}>
                 <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛞','🧰'][index]}</Text></View>
                 <View style={{flex:1}}><Text style={styles.serviceTitle}>{type === 'إرسالية صيانة وخدمات' ? 'طلب إرسالية صيانة وخدمات' : `طلب ${type}`}</Text><Text style={styles.serviceSub}>إنشاء طلب جديد وإرفاق المستندات</Text></View>
