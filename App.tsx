@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.96.66';
-const APP_BUILD = '96';
+const APP_VERSION = '1.97.67';
+const APP_BUILD = '97';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -284,20 +284,23 @@ export default function App() {
         setManagerProfiles(mappedProfiles);
       }
       const profilesForLookup = pData || [];
-      const { data: dData, error: dError } = await supabase
-        .from('drivers')
-        .select('id, driver_name, plate_number, phone, status, created_at')
-        .order('driver_name', { ascending: true });
+      const [{ data: dData, error: dError }, { data: accountAssignments, error: accountAssignmentsError }] = await Promise.all([
+        supabase.from('drivers').select('id, driver_name, plate_number, phone, status, created_at').order('driver_name', { ascending: true }),
+        supabase.from('fleet_user_manager_assignments').select('user_id,manager_user_id')
+      ]);
       if (!dError && dData) setDrivers(dData);
+      if (accountAssignmentsError) console.log('Manager assignment lookup:', accountAssignmentsError.message);
 
       const { data: vData, error: vError } = await supabase.from('vehicles').select('*').order('id', { ascending: true });
       if (vError) throw vError;
       if (vData) {
         const driverRows = dData || [];
         const mappedFleet: Vehicle[] = vData.map((v: any) => {
-          const assignedProfile = profilesForLookup.find((p: any) => String(p.id) === String(v.direct_manager_id || ''));
           const carNo = String(v.car_number || '').trim();
           const matchedDriver = driverRows.find((d: any) => String(d.plate_number || '').trim() === carNo);
+          const driverProfile = profilesForLookup.find((profile: any) => String(profile.username || '').trim() === carNo);
+          const accountAssignment = (accountAssignments || []).find((a: any) => String(a.user_id) === String(driverProfile?.id || ''));
+          const assignedProfile = profilesForLookup.find((profile: any) => String(profile.id) === String(accountAssignment?.manager_user_id || v.direct_manager_id || ''));
           return {
             id: String(v.id),
             carNumber: carNo,
@@ -311,13 +314,14 @@ export default function App() {
             engineNo: v.engine_number || '',
             chassisNo: v.chassis_number || '',
             ownership: v.ownership === 'خاصة' ? 'خاصة' : 'شركة',
-            directManager: v.direct_manager || v.directManager || assignedProfile?.full_name || assignedProfile?.username || '',
-            directManagerId: v.direct_manager_id ? String(v.direct_manager_id) : ''
+            directManager: assignedProfile?.full_name || assignedProfile?.username || v.direct_manager || v.directManager || '',
+            directManagerId: accountAssignment?.manager_user_id ? String(accountAssignment.manager_user_id) : (v.direct_manager_id ? String(v.direct_manager_id) : '')
           };
         });
         setFleet(mappedFleet);
       }
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
+      if (rError) { console.log('Requests query failed:', rError.message); }
       if (!rError && rData) {
         const mappedReqs: RequestItem[] = (rData || []).map((r: any) => {
           const stored = parseStoredNotes(r.notes);
@@ -1304,14 +1308,35 @@ export default function App() {
 
   const saveAccountPermissions = async () => {
     if (!roleAccountId) { Alert.alert('اختر حسابًا', 'حدد الحساب المراد تعديل إعداداته.'); return; }
+    const serviceRoles = ['services_alnaqil', 'services_administration'];
+    for (const serviceRole of serviceRoles) {
+      if (!roleAccountPermissions.includes(serviceRole)) continue;
+      const assignedElsewhere = managerProfiles.find((profile: any) =>
+        String(profile.id) !== roleAccountId && (profile.accountRoleKeys || []).includes(serviceRole)
+      );
+      if (assignedElsewhere) {
+        const roleLabel = permissionOptions.find((option: any) => option.key === serviceRole)?.label || serviceRole;
+        Alert.alert('الدور محدد لحساب آخر', `تم تحديد دور «${roleLabel}» للحساب ${assignedElsewhere.full_name || assignedElsewhere.username}. لا يمكن تعيينه لحساب آخر قبل إزالته من الحساب الحالي.`);
+        setRolePermissionsSaving(false);
+        return;
+      }
+    }
     setRolePermissionsSaving(true);
     try {
-      const roleRows = roleAccountPermissions.map(role_key => ({user_id: roleAccountId, role_key}));
-      const {error: delRolesError} = await supabase.from('fleet_account_roles').delete().eq('user_id', roleAccountId);
-      if (delRolesError) throw delRolesError;
-      if (roleRows.length) {
-        const {error} = await supabase.from('fleet_account_roles').upsert(roleRows,{onConflict:'user_id,role_key'});
+      const existingRoles: string[] = managerProfiles.find((profile: any) => String(profile.id) === roleAccountId)?.accountRoleKeys || [];
+      const rolesToDelete = existingRoles.filter((role: string) => !roleAccountPermissions.includes(role));
+      const rolesToInsert = roleAccountPermissions.filter((role: string) => !existingRoles.includes(role));
+      if (rolesToDelete.length) {
+        const { error } = await supabase.from('fleet_account_roles').delete().eq('user_id', roleAccountId).in('role_key', rolesToDelete);
         if (error) throw error;
+      }
+      if (rolesToInsert.length) {
+        const roleRows = rolesToInsert.map(role_key => ({user_id: roleAccountId, role_key, updated_by: currentUser?.authId || null}));
+        const {error} = await supabase.from('fleet_account_roles').upsert(roleRows,{onConflict:'user_id,role_key'});
+        if (error) {
+          if (error.code === '23505') throw new Error('هذا الدور محدد بالفعل لحساب آخر. حدّث قائمة الحسابات لمعرفة اسم الحساب المعيّن له الدور.');
+          throw error;
+        }
       }
       if (accountManagerId) {
         const {error} = await supabase.from('fleet_user_manager_assignments').upsert(
@@ -1329,6 +1354,8 @@ export default function App() {
       }));
       const {error: permError} = await supabase.from('fleet_user_permissions').upsert(permissionRows,{onConflict:'user_id,permission_key'});
       if (permError) throw permError;
+      setManagerProfiles((prev: any[]) => prev.map((profile: any) => String(profile.id) === roleAccountId
+        ? {...profile, accountRoleKeys: [...roleAccountPermissions]} : profile));
       Alert.alert('تم الحفظ','تم حفظ أدوار الحساب والمسؤول المباشر وصلاحيات الطلب والاعتماد.');
     } catch (e:any) {
       Alert.alert('فشل الحفظ', e?.message || 'تحقق من تشغيل ملف SQL المرفق وصلاحيات الجداول.');
@@ -1338,7 +1365,7 @@ export default function App() {
   const renderAccountRoleManager = () => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>إدارة أدوار وصلاحيات الحسابات</Text>
-      <Text style={styles.helper}>يمكن للحساب الجمع بين أكثر من دور. جهة الخدمات الإدارية لا تُسند إلا لحساب واحد لكل جهة. حدد الحساب ثم عيّن المسؤول المباشر والصلاحيات.</Text>
+      <Text style={styles.helper}>يمكن للحساب الجمع بين الأدوار المسموح بها، لكن كل دور للخدمات الإدارية يُسند لحساب واحد فقط. سيظهر اسم الحساب الذي سبق تعيين الدور له ويُمنع اختياره لحساب آخر.</Text>
       <TouchableOpacity style={styles.importBtn} onPress={loadSupabaseData}><Text style={styles.btnText}>تحديث قائمة الحسابات</Text></TouchableOpacity>
       <Text style={styles.cardTitle}>الحساب</Text>
       <ScrollView style={{maxHeight:240}} nestedScrollEnabled>
@@ -1359,7 +1386,22 @@ export default function App() {
           {managerProfiles.filter((p:any)=>p.is_active!==false && String(p.id)!==roleAccountId && (p.accountRoleKeys || []).includes('direct_manager')).map((p:any)=><TouchableOpacity key={String(p.id)} style={[styles.choice,accountManagerId===String(p.id)&&styles.choiceActive]} onPress={()=>setAccountManagerId(String(p.id))}><Text style={styles.choiceText}>{p.full_name||p.username}</Text></TouchableOpacity>)}
         </View>
         <Text style={[styles.cardTitle,{marginTop:14}]}>أدوار الحساب</Text>
-        {permissionOptions.map(option=>{const checked=roleAccountPermissions.includes(option.key);return <TouchableOpacity key={option.key} onPress={()=>setRoleAccountPermissions(prev=>checked?prev.filter(x=>x!==option.key):[...prev,option.key])} style={[styles.assignRow,{alignItems:'center'}]}><Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':'□'}</Text><Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text></TouchableOpacity>;})}
+        {permissionOptions.map((option:any)=>{
+          const checked=roleAccountPermissions.includes(option.key);
+          const isExclusiveServiceRole=['services_alnaqil','services_administration'].includes(option.key);
+          const assignedElsewhere=isExclusiveServiceRole ? managerProfiles.find((profile:any)=>String(profile.id)!==roleAccountId && (profile.accountRoleKeys||[]).includes(option.key)) : null;
+          const locked=!!assignedElsewhere && !checked;
+          return <TouchableOpacity key={option.key} disabled={locked} onPress={()=>{
+            if (locked) { Alert.alert('الدور محدد بالفعل', `تم تحديد هذا الدور للحساب ${assignedElsewhere.full_name || assignedElsewhere.username}.`); return; }
+            setRoleAccountPermissions((prev:string[])=>checked?prev.filter(x=>x!==option.key):[...prev,option.key]);
+          }} style={[styles.assignRow,{alignItems:'center'},locked&&{opacity:0.58}]}>
+            <Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':locked?'🔒':'□'}</Text>
+            <View style={{flex:1}}>
+              <Text style={{textAlign:'right',fontWeight:'700',color:COLORS.text}}>{option.label}</Text>
+              {assignedElsewhere ? <Text style={{textAlign:'right',fontSize:11,color:COLORS.danger,marginTop:3}}>محدد للحساب: {assignedElsewhere.full_name || assignedElsewhere.username}</Text> : null}
+            </View>
+          </TouchableOpacity>;
+        })}
         <Text style={[styles.cardTitle,{marginTop:14}]}>أنواع الطلبات المسموح بإنشائها</Text>
         {REQUEST_PERMISSION_OPTIONS.map((o:any)=>{const checked=accountPermissionKeys.includes(o.key);return <TouchableOpacity key={o.key} onPress={()=>setAccountPermissionKeys(prev=>checked?prev.filter(x=>x!==o.key):[...prev,o.key])} style={[styles.assignRow,{alignItems:'center'}]}><Text style={{fontSize:20,color:checked?COLORS.success:COLORS.muted}}>{checked?'☑':'□'}</Text><Text style={{flex:1,textAlign:'right',fontWeight:'700',color:COLORS.text}}>{o.label}</Text></TouchableOpacity>;})}
         <Text style={[styles.cardTitle,{marginTop:14}]}>أنواع الطلبات التي يوافق عليها هذا المسؤول</Text>
@@ -1402,11 +1444,10 @@ export default function App() {
                     <Text style={{ fontWeight: '800', textAlign: 'right' }}>
                       السيارة رقم {v.carNumber || v.car_number || v.id}
                     </Text>
-                    <Text style={{
-                      fontSize: 12,
-                      color: COLORS.muted,
-                      textAlign: 'right'
-                    }}>
+                    <Text style={{ fontSize: 12, color: COLORS.muted, textAlign: 'right', marginTop: 3 }}>
+                      السائق: {v.driver || 'غير محدد'}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: v.directManager ? COLORS.text : COLORS.muted, textAlign: 'right', marginTop: 2 }}>
                       المسؤول المباشر: {v.directManager || 'غير معيّن'}
                     </Text>
                   </View>
@@ -1964,91 +2005,86 @@ export default function App() {
 
   const renderMyRequestsAndReports = () => {
     const myRows = requests.filter(r => r.vehicleId === currentUser?.id || r.applicantId === currentUser?.authId);
+    const serviceTypes: Array<{type:string; label:string; icon:string; permission:string}> = [
+      {type:'وقود', label:'طلب محروقات', icon:'⛽', permission:'request_fuel'},
+      {type:'زيوت', label:'طلب زيوت', icon:'🛢️', permission:'request_oils'},
+      {type:'بطاريات', label:'طلب بطاريات', icon:'🔋', permission:'request_batteries'},
+      {type:'قطع غيار', label:'طلب قطع غيار', icon:'🔧', permission:'request_parts'},
+      {type:'إطارات', label:'طلب إطارات', icon:'🛞', permission:'request_tires'},
+      {type:'إرسالية صيانة وخدمات', label:'إرسالية صيانة وخدمات', icon:'🧰', permission:'request_maintenance'},
+    ];
+    const hasPermission = (key:string) => {
+      const rows = (currentUser?.permissionKeys || currentUser?.permissions || []) as any[];
+      return Array.isArray(rows) && (rows.includes(key) || rows.some((x:any)=>x?.permission_key===key && x?.enabled===true));
+    };
+    const normalizeStatus = (status:string) => {
+      const value=String(status||'').trim();
+      if (value==='تمت الموافقة' || value==='موافق' || value==='مكتمل') return 'تمت الموافقة';
+      if (value==='مرفوض' || value==='تم رفض الطلب') return 'مرفوض';
+      return 'تحت المراجعة';
+    };
     if (selectedServiceScreenType) {
       const typeRows = myRows.filter(r => r.type === selectedServiceScreenType || (selectedServiceScreenType === 'إرسالية صيانة وخدمات' && /إرسالية صيانة|إرسالية خدمات بنشر/.test(r.type)));
+      const visibleRows = typeRows.filter(r => requestStatusFilter === 'الكل' || normalizeStatus(r.status) === requestStatusFilter);
+      const isDispatch = selectedServiceScreenType === 'إرسالية صيانة وخدمات';
+      const createType = isDispatch ? 'إرسالية صيانة' : selectedServiceScreenType;
       return <View>
-        <TouchableOpacity onPress={() => setSelectedServiceScreenType(null)} style={[styles.actionBtn, {backgroundColor: COLORS.muted, marginBottom: 12}]}><Text style={styles.btnText}>رجوع إلى قائمة الخدمات</Text></TouchableOpacity>
-        <Text style={styles.sectionTitle}>{selectedServiceScreenType}</Text>
-        <View style={{flexDirection:'row-reverse', gap:8, marginBottom:12}}>
-          <TouchableOpacity onPress={() => setServiceScreenMode('create')} style={[styles.choice, serviceScreenMode === 'create' && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, serviceScreenMode === 'create' && styles.choiceTextActive]}>إنشاء طلب</Text></TouchableOpacity>
-          <TouchableOpacity onPress={() => setServiceScreenMode('history')} style={[styles.choice, serviceScreenMode === 'history' && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, serviceScreenMode === 'history' && styles.choiceTextActive]}>سجل طلبات النوع ({typeRows.length})</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => {setSelectedServiceScreenType(null);setRequestStatusFilter('الكل');}} style={[styles.actionBtn,{backgroundColor:COLORS.muted,marginBottom:12}]}><Text style={styles.btnText}>رجوع إلى الرئيسية</Text></TouchableOpacity>
+        <Text style={styles.sectionTitle}>{serviceTypes.find(x=>x.type===selectedServiceScreenType)?.label || selectedServiceScreenType}</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>إنشاء طلب</Text>
+          <Text style={styles.cardText}>أنشئ طلبًا جديدًا من هذا النوع، ثم تابع حالته في تقرير الطلبات أسفل الشاشة.</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(createType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity>
         </View>
-        {serviceScreenMode === 'create' ? <View style={styles.card}><Text style={styles.cardText}>إنشاء طلب جديد من نوع: {selectedServiceScreenType}</Text><TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(selectedServiceScreenType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity></View> : <View>
-          {typeRows.length === 0 ? <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد طلبات من هذا النوع.</Text></View> : typeRows.map(r => <View key={r.id} style={styles.card}><View style={styles.cardHeader}><Text style={styles.cardId}>طلب #{r.id}{r.approvalNumber ? ` | اعتماد ${r.approvalNumber}` : ''}</Text><Text style={styles.badge}>{r.status}</Text></View><Text style={styles.cardTitle}>{r.type}</Text><Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty} {r.unit || ''}</Text><Text style={styles.cardText}>الإجمالي: {money(r.total)}</Text>{r.type === 'إرسالية صيانة' && r.status === 'تمت الموافقة' ? <TouchableOpacity style={[styles.actionBtn,{marginTop:8}]} onPress={() => handlePreviewPrintCarRepair(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity> : null}{r.type === 'إرسالية خدمات بنشر' && r.status === 'تمت الموافقة' ? <TouchableOpacity style={[styles.actionBtn,{marginTop:8}]} onPress={() => handlePreviewPrintPunctureService(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity> : null}</View>)}
-        </View>}
+        <View style={{marginTop:4}}>
+          <Text style={styles.sectionTitle}>تقارير الطلبات ({typeRows.length})</Text>
+          <Text style={styles.label}>فلترة حسب حالة الطلب</Text>
+          <View style={{flexDirection:'row-reverse',flexWrap:'wrap',gap:7,marginBottom:12}}>
+            {['الكل','تمت الموافقة','مرفوض','تحت المراجعة'].map(status=> <TouchableOpacity key={status} onPress={()=>setRequestStatusFilter(status)} style={[styles.choice,requestStatusFilter===status&&styles.choiceActive]}><Text style={[styles.choiceText,requestStatusFilter===status&&styles.choiceTextActive]}>{status}</Text></TouchableOpacity>)}
+          </View>
+          {visibleRows.length===0 ? <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد طلبات تطابق حالة الفلترة المحددة.</Text></View> : visibleRows.map(r=>{
+            const normalized=normalizeStatus(r.status);
+            const stageStatusLabel=(value:string|undefined)=>{const v=String(value||'').trim();return v==='موافق'||v==='تمت الموافقة'||v==='مكتمل'?'تمت الموافقة':v==='مرفوض'||v==='تم رفض الطلب'?'مرفوض':'تحت المراجعة';};
+            const managerStatus=stageStatusLabel(r.directManagerStatus);
+            const servicesStatus=stageStatusLabel(r.servicesStatus);
+            const statusColor=normalized==='تمت الموافقة'?'#218838':normalized==='مرفوض'?'#C62828':'#8B5A2B';
+            const statusBg=normalized==='تمت الموافقة'?'#E8F5E9':normalized==='مرفوض'?'#FFEBEE':'#F5E8D7';
+            return <View key={r.id} style={[styles.card,{borderRightWidth:5,borderRightColor:statusColor}]}>
+              <View style={styles.cardHeader}><Text style={styles.cardId}>طلب رقم {r.id}{r.approvalNumber?` · اعتماد ${r.approvalNumber}`:''}</Text><Text style={[styles.badge,{backgroundColor:statusBg,color:statusColor}]}>{normalized}</Text></View>
+              <Text style={styles.cardText}>التاريخ: {r.date}</Text>
+              <Text style={styles.cardText}>الكمية: {r.qty} {r.unit||''}</Text>
+              <Text style={styles.cardText}>الإجمالي: {money(r.total)}</Text>
+              {r.station?<Text style={styles.cardText}>المحطة: {r.station}</Text>:null}
+              {r.fuelType?<Text style={styles.cardText}>نوع الوقود: {r.fuelType}</Text>:null}
+              {r.oilType?<Text style={styles.cardText}>نوع الزيت: {r.oilType}</Text>:null}
+              {r.itemName?<Text style={styles.cardText}>الصنف: {r.itemName}</Text>:null}
+              {r.administrativeDestination?<Text style={styles.cardText}>جهة الخدمات الإدارية: {r.administrativeDestination}</Text>:null}
+              {r.notes?<Text style={styles.cardText}>ملاحظات: {r.notes}</Text>:null}
+              <View style={{marginTop:9,borderTopWidth:1,borderTopColor:COLORS.border,paddingTop:8}}>
+                <Text style={{textAlign:'right',fontWeight:'900',color:COLORS.text,marginBottom:4}}>تفاصيل مسار الاعتماد</Text>
+                <Text style={{textAlign:'right',color:managerStatus==='تمت الموافقة'? '#218838':managerStatus==='مرفوض'?'#C62828':'#8B5A2B',fontSize:12,marginBottom:3}}>المسؤول المباشر: {managerStatus}</Text>
+                <Text style={{textAlign:'right',color:servicesStatus==='تمت الموافقة'? '#218838':servicesStatus==='مرفوض'?'#C62828':'#8B5A2B',fontSize:12}}>الخدمات الإدارية: {servicesStatus}</Text>
+                <Text style={{textAlign:'right',color:COLORS.muted,fontSize:12,marginTop:3}}>المرحلة الحالية: {r.currentStep || r.workflow || 'المسؤول المباشر'}</Text>
+              </View>
+              {r.type==='إرسالية صيانة'&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintCarRepair(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity>:null}
+              {r.type==='إرسالية خدمات بنشر'&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintPunctureService(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity>:null}
+            </View>;
+          })}
+        </View>
       </View>;
     }
-    return (
-      <View>
-        <View style={{flexDirection: 'row-reverse', backgroundColor: '#fff', borderRadius: 12, padding: 4, marginBottom: 15, borderWidth: 1, borderColor: COLORS.border}}>
-          <TouchableOpacity onPress={() => setSubView('report')} style={[{flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: subView === 'report' ? COLORS.primary : 'transparent'}]}>
-            <Text style={{fontWeight: '900', color: subView === 'report' ? COLORS.primary : COLORS.muted}}>سجل الطلبات</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setSubView('create')} style={[{flex: 1, paddingVertical: 10, alignItems: 'center', borderBottomWidth: 3, borderBottomColor: subView === 'create' ? COLORS.primary : 'transparent'}]}>
-            <Text style={{fontWeight: '900', color: subView === 'create' ? COLORS.primary : COLORS.muted}}>طلب جديد</Text>
-          </TouchableOpacity>
-        </View>
-
-        {subView === 'create' ? (
-          <View>
-            <Text style={styles.sectionTitle}>الخدمات والطلبات</Text>
-            {(['وقود', 'زيوت', 'بطاريات', 'قطع غيار', 'إطارات', 'إرسالية صيانة وخدمات'] as string[]).filter(type => {
-              const keyByType: Record<string,string> = {'وقود':'request_fuel','زيوت':'request_oils','بطاريات':'request_batteries','قطع غيار':'request_parts','إطارات':'request_tires','إرسالية صيانة وخدمات':'request_maintenance'};
-              const k = keyByType[type];
-              const rows = (currentUser?.permissionKeys || currentUser?.permissions || []) as any[];
-              if (!k || !Array.isArray(rows)) return false;
-              return rows.includes(k) || rows.some((x:any)=>x?.permission_key===k && x?.enabled===true);
-            }).map((type, index) => (
-              <TouchableOpacity key={type} style={styles.serviceCard} onPress={() => { setSelectedServiceScreenType(type); setServiceScreenMode('create'); }}>
-                <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{['⛽','🛢️','🔋','🔧','🛞','🧰'][index]}</Text></View>
-                <View style={{flex:1}}><Text style={styles.serviceTitle}>{type === 'إرسالية صيانة وخدمات' ? 'طلب إرسالية صيانة وخدمات' : `طلب ${type}`}</Text><Text style={styles.serviceSub}>إنشاء طلب جديد وإرفاق المستندات</Text></View>
-                <Text style={styles.chevron}>‹</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        ) : (
-          <View>
-            <Text style={styles.sectionTitle}>سجل وتقرير الطلبات</Text>
-            {myRows.length === 0 ? (
-              <View style={styles.emptyCard}><Text style={styles.emptyText}>لا توجد طلبات مسجلة خاصة بك حالياً.</Text></View>
-            ) : null}
-            {myRows.map(r => {
-              const isApproved = r.status === 'تمت الموافقة';
-              const isRejected = r.status === 'مرفوض';
-              return (
-                <View key={r.id} style={[styles.card, {borderRightWidth: 5, borderRightColor: isApproved ? COLORS.success : isRejected ? COLORS.danger : COLORS.warning}]}>
-                  <View style={styles.cardHeader}>
-                    <Text style={styles.cardId}>طلب #{r.id}{r.approvalNumber ? ` | اعتماد ${r.approvalNumber}` : ''}</Text>
-                    <Text style={[styles.badge, {backgroundColor: isApproved ? '#E8F5E9' : isRejected ? '#FFEBEE' : '#FFF4E5', color: isApproved ? COLORS.success : isRejected ? COLORS.danger : '#9A5B00'}]}>{r.status}</Text>
-                  </View>
-                  <Text style={styles.cardTitle}>{r.type}</Text>
-                  <Text style={styles.cardText}>التاريخ: {r.date} | الكمية: {r.qty}</Text>
-                  <Text style={styles.cardText}>التكلفة الإجمالية: {money(r.total)}</Text>
-                  <Text style={styles.cardText}>جهة الإرسالية: {r.administrativeDestination || 'النقيل'}</Text>
-                  
-                  {r.type === 'إرسالية صيانة' && isApproved && (
-                    <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB', marginTop: 8}]} onPress={() => handlePreviewPrintCarRepair(r)}>
-                      <Text style={styles.btnText}>معاينة وطباعة النموذج</Text>
-                    </TouchableOpacity>
-                  )}
-                  {r.type === 'إرسالية خدمات بنشر' && isApproved && (
-                    <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#2563EB', marginTop: 8}]} onPress={() => handlePreviewPrintPunctureService(r)}>
-                      <Text style={styles.btnText}>معاينة وطباعة النموذج</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  <View style={{marginTop: 8, borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 8}}>
-                    <Text style={{textAlign: 'right', fontWeight: '800', color: COLORS.primary, fontSize: 13}}>مسار الاعتمادات الحالي:</Text>
-                    <Text style={{textAlign: 'right', color: COLORS.text, fontSize: 12, marginTop: 2}}>المدير المباشر: {r.directManagerStatus || 'تحت المراجعة'}</Text>
-                    <Text style={{textAlign: 'right', color: COLORS.text, fontSize: 12}}>الخدمات: {r.servicesStatus || 'تحت المراجعة'}</Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
-      </View>
-    );
+    return <View>
+      <Text style={styles.sectionTitle}>الرئيسية · طلبات الخدمات</Text>
+      <Text style={styles.helper}>اختر نوع الطلب. ستجد في شاشة كل نوع نموذج إنشاء الطلب وتقاريره وحالات الاعتماد.</Text>
+      {serviceTypes.filter(item=>hasPermission(item.permission)).map(item=><TouchableOpacity key={item.type} style={styles.serviceCard} onPress={()=>{setSelectedServiceScreenType(item.type);setRequestStatusFilter('الكل');}}>
+        <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{item.icon}</Text></View>
+        <View style={{flex:1}}><Text style={styles.serviceTitle}>{item.label}</Text><Text style={styles.serviceSub}>إنشاء طلب ومتابعة الموافقة والرفض والمراجعة</Text></View>
+        <Text style={styles.chevron}>‹</Text>
+      </TouchableOpacity>)}
+      <TouchableOpacity style={[styles.menuCard,{marginTop:8}]} onPress={()=>setUserTab('reports')}>
+        <View style={styles.menuIcon}><Text style={styles.menuIconText}>📊</Text></View><View style={{flex:1}}><Text style={styles.menuTitle}>التقارير العامة</Text><Text style={styles.menuSub}>عرض تقارير الأسطول المتاحة لحسابك</Text></View><Text style={styles.chevron}>‹</Text>
+      </TouchableOpacity>
+    </View>;
   };
 
   const renderUserReportsSection = () => {
@@ -2347,7 +2383,6 @@ export default function App() {
       ['assignments', '🔗', 'الربط'],
       ['permissions', '🔐', 'الصلاحيات'],
       ['reports', '📊', 'التقارير'],
-      ['settings', '⚙️', 'الإعدادات'],
       ...(isRequestApprover(currentUser)
         ? [['requestManagers', '👥', 'مسؤولي الطلبات']]
         : []),
@@ -2405,6 +2440,18 @@ export default function App() {
           {adminTab === 'settings' ? renderUserSettings() : null}
           {adminTab === 'requestManagers' && isRequestApprover(currentUser) ? renderRequestManagersAdmin() : null}
         </ScrollView>
+
+        <View style={styles.driverNav}>
+          <TouchableOpacity style={styles.driverNavItem} onPress={() => setAdminTab('settings')}>
+            <Text style={{fontSize:18}}>⚙️</Text><Text style={[styles.driverNavText,adminTab==='settings'&&styles.activeNavText]}>الإعدادات</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.driverNavItem} onPress={() => setAdminTab('requests')}>
+            <Text style={{fontSize:20}}>🏠</Text><Text style={[styles.driverNavText,adminTab==='requests'&&styles.activeNavText]}>الرئيسية</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.driverNavItem} onPress={() => Alert.alert('الإشعارات','سيتم تفعيل الإشعارات في مرحلة لاحقة.')}>
+            <Text style={{fontSize:18}}>🔔</Text><Text style={styles.driverNavText}>الإشعارات</Text>
+          </TouchableOpacity>
+        </View>
 
         <Modal
           visible={managerAssignModal}
@@ -2557,7 +2604,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
       <View style={styles.topHeader}>
-        <View><Text style={styles.headerTitle}>السيارة {currentUser.id}</Text><Text style={styles.headerSub}>{currentUser.driver}</Text></View>
+        <View><Text style={styles.headerTitle}>{currentUser.name || `السيارة ${currentUser.id}`}</Text><Text style={styles.headerSub}>{currentUser.driver || currentUser.profile?.full_name || currentUser.username}</Text></View>
       </View>
 
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingBottom:110}}>
@@ -2568,17 +2615,15 @@ export default function App() {
       </ScrollView>
 
       <View style={styles.driverNav}>
-        {[
-          ['service','🏠','الرئيسية'],
-          ...(isManagerOrAdminUser ? [['driver_requests', '📋', 'طلبات السائقين']] : []),
-          ['reports','📊','التقارير'],
-          ['settings','⚙️','الإعدادات']
-        ].map(([key,icon,label]) => (
-          <TouchableOpacity key={key} style={styles.driverNavItem} onPress={() => setUserTab(key)}>
-            <Text style={{fontSize:18}}>{icon}</Text>
-            <Text style={[styles.driverNavText,userTab === key && styles.activeNavText]}>{label}</Text>
-          </TouchableOpacity>
-        ))}
+        <TouchableOpacity style={styles.driverNavItem} onPress={() => setUserTab('settings')}>
+          <Text style={{fontSize:18}}>⚙️</Text><Text style={[styles.driverNavText,userTab==='settings'&&styles.activeNavText]}>الإعدادات</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.driverNavItem} onPress={() => {setUserTab('service');setSelectedServiceScreenType(null);}}>
+          <Text style={{fontSize:20}}>🏠</Text><Text style={[styles.driverNavText,userTab==='service'&&styles.activeNavText]}>الرئيسية</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.driverNavItem} onPress={() => Alert.alert('الإشعارات','سيتم تفعيل الإشعارات في مرحلة لاحقة.')}>
+          <Text style={{fontSize:18}}>🔔</Text><Text style={styles.driverNavText}>الإشعارات</Text>
+        </TouchableOpacity>
       </View>
       {renderRequestModal()}
     </SafeAreaView>
