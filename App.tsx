@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.95.65';
-const APP_BUILD = '95';
+const APP_VERSION = '1.96.66';
+const APP_BUILD = '96';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -1193,15 +1193,22 @@ export default function App() {
       }
       const roleKeys: string[] = Array.isArray(currentUser?.fleetRoleKeys) ? currentUser.fleetRoleKeys : [];
       const currentId = String(currentUser?.authId || currentUser?.profile?.id || '');
-      if (roleKeys.includes('services_alnaqil') || roleKeys.includes('services_administration')) {
-        const expectedStep = roleKeys.includes('services_alnaqil') ? 'الخدمات الإدارية - النقيل' : 'الخدمات الإدارية - الإدارة';
-        return (r.currentStep || r.workflow) === expectedStep && String(r.assignedTo || '') === currentId && r.status !== 'مرفوض' && r.status !== 'تمت الموافقة';
+      const stage = String(r.currentStep || r.workflow || '');
+      const isAssignedToCurrentAccount = String(r.assignedTo || '') === currentId;
+      const isOpen = r.status !== 'مرفوض' && r.status !== 'تمت الموافقة';
+
+      // A single account may hold multiple workflow roles. Evaluate the role for
+      // the request's actual current stage instead of prioritizing service roles.
+      if (stage === 'المسؤول المباشر') {
+        return roleKeys.includes('direct_manager') && isAssignedToCurrentAccount && isOpen;
       }
-      const currentProfileId = String(currentUser?.authId || currentUser?.profile?.id || '');
-      const isDirectManagerStage = (r.currentStep || r.workflow) === 'المسؤول المباشر';
-      const isAssignedToCurrentAccount = String(r.assignedTo || '') === currentProfileId;
-      return isDirectManagerStage && isAssignedToCurrentAccount &&
-        r.status !== 'مرفوض' && r.status !== 'تمت الموافقة';
+      if (stage === 'الخدمات الإدارية - النقيل') {
+        return roleKeys.includes('services_alnaqil') && isAssignedToCurrentAccount && isOpen;
+      }
+      if (stage === 'الخدمات الإدارية - الإدارة') {
+        return roleKeys.includes('services_administration') && isAssignedToCurrentAccount && isOpen;
+      }
+      return false;
     });
 
     return (
