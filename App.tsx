@@ -19,8 +19,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.99.69';
-const APP_BUILD = '99';
+const APP_VERSION = '1.100.70';
+const APP_BUILD = '100';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -50,6 +50,7 @@ type RequestItem = {
   applicantId?: string;
   assignedTo?: string;
   currentStep?: string;
+  allocation?: string;
 };
 
 type PermissionSet = {
@@ -113,6 +114,8 @@ export default function App() {
   const [workshops, setWorkshops] = useState<string[]>(['ورشة المركز الرئيسي', 'ورشة الصناعية']);
   const [clients, setClients] = useState<string[]>(['شركة الألوان', 'الشركة العامة']);
   const [engineers, setEngineers] = useState<string[]>(['مهندس أحمد', 'مهندس محمد']);
+  const [priceRows, setPriceRows] = useState<any[]>([]);
+  const [priceBusy, setPriceBusy] = useState(false);
   const [prices, setPrices] = useState<Record<string, number>>({
     'ديزل': 1200, 'بترول': 1200, 'تويوتا': 4500, 'ليكوي مولي': 6000,
     'ناشيونال': 4000, 'بطارية 70 أمبير': 65000, 'بطارية 100 أمبير': 85000,
@@ -176,6 +179,8 @@ export default function App() {
   const [adminCarFrom, setAdminCarFrom] = useState('');
   const [adminCarTo, setAdminCarTo] = useState('');
   const [carRangeOpen, setCarRangeOpen] = useState(false);
+  const [allCarsSelected, setAllCarsSelected] = useState(false);
+  const [carPicker, setCarPicker] = useState<'from'|'to'|null>(null);
   
   const [selectedStation, setSelectedStation] = useState(stations[0]);
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
@@ -188,6 +193,8 @@ export default function App() {
   const [selectedEngineer, setSelectedEngineer] = useState(engineers[0]);
   const [selectedClient, setSelectedClient] = useState(clients[0]);
   const [selectedUnit, setSelectedUnit] = useState('دبة');
+  const [allocations, setAllocations] = useState<string[]>([]);
+  const [selectedAllocation, setSelectedAllocation] = useState('');
   const [administrativeDestination, setAdministrativeDestination] = useState('النقيل');
   
   const [reqQty, setReqQty] = useState('');
@@ -228,7 +235,7 @@ export default function App() {
     'نوع المهمة': tripTypes, 'الوجهة/المنطقة': tripDestinations,
   };
   const codingSetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-    'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+    'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
     'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
     'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes, 'نوع المهمة': setTripTypes,
@@ -336,7 +343,7 @@ export default function App() {
       if (codingError) console.log('Coding lookup:', codingError.message);
       if (!codingError && codingRows) {
         const categorySetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-          'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+          'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
           'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
           'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
           'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes,
@@ -346,6 +353,17 @@ export default function App() {
           const values = codingRows.filter((x: any) => x.category === category).map((x: any) => String(x.item_name || '').trim()).filter(Boolean);
           if (values.length) setter(values);
         });
+      }
+      // الأسعار المعتمدة تُقرأ من جدول app_prices ولا تستخدم القيم المحلية القديمة.
+      const { data: dbPriceRows, error: priceLoadError } = await supabase.from('app_prices')
+        .select('id,category,item_name,price,unit,is_active,sort_order')
+        .order('sort_order', { ascending: true });
+      if (priceLoadError) console.log('Price lookup:', priceLoadError.message);
+      if (!priceLoadError && dbPriceRows) {
+        setPriceRows(dbPriceRows);
+        const priceMap: Record<string, number> = {};
+        dbPriceRows.forEach((row: any) => { priceMap[String(row.item_name)] = Number(row.price || 0); });
+        setPrices(priceMap);
       }
       const { data: rData, error: rError } = await supabase.from('requests').select('*').order('created_at', { ascending: false });
       if (rError) { console.log('Requests query failed:', rError.message); }
@@ -362,7 +380,7 @@ export default function App() {
             id: String(r.id), approvalNumber: r.approval_number || '', vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
             type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
             qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
-            notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
+            notes: stored.appNotes || '', station: r.station || '', allocation: r.allocation || extra.allocation || '', unit: r.unit || '',
             currOdo: r.odometer == null ? undefined : Number(r.odometer), workflow: stage,
             imageUri: extra.imageUri, fuelType: extra.fuelType, oilType: extra.oilType,
             itemName: extra.itemName, prevOdo: extra.prevOdo, distance: extra.distance,
@@ -607,7 +625,7 @@ export default function App() {
     if (serviceTypeModal === 'وقود') {
       const qty = Number(reqQty);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
-      item.qty = qty; item.total = qty * currentUnitPrice(); item.station = selectedStation; item.fuelType = selectedFuel;
+      item.qty = qty; item.total = qty * currentUnitPrice(); item.station = selectedStation; item.fuelType = selectedFuel; item.allocation = selectedAllocation;
     } else if (serviceTypeModal === 'زيوت') {
       const qty = Number(reqQty); const odo = Number(currOdometer); const prev = lastOdometer(currentUser.id);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
@@ -624,10 +642,10 @@ export default function App() {
       item.itemName = selectedMaintenance; item.qty = Number(reqQty) || 1; item.total = item.qty * currentUnitPrice();
       item.workshop = selectedWorkshop; item.engineer = selectedEngineer; item.faultType = faultType; item.requiredWork = requiredWork;
     } else if (serviceTypeModal === 'إرسالية صيانة') {
-      if (!selectedWorkshop || !selectedEngineer || !faultType.trim() || !requiredWork.trim()) {
-        Alert.alert('تنبيه', 'أكمل الورشة والمهندس ونوع العطل والعمل المطلوب.'); return;
+      if (!selectedWorkshop || !faultType.trim() || !requiredWork.trim()) {
+        Alert.alert('تنبيه', 'أكمل الورشة ونوع العطل والعمل المطلوب.'); return;
       }
-      item.qty = 1; item.total = 0; item.workshop = selectedWorkshop; item.engineer = selectedEngineer;
+      item.qty = 1; item.total = 0; item.workshop = selectedWorkshop; item.engineer = ''; 
       item.faultType = faultType; item.requiredWork = requiredWork;
     } else if (serviceTypeModal === 'إرسالية خدمات بنشر') {
       if (!selectedClient || !serviceDescription.trim()) { Alert.alert('تنبيه', 'اختر العميل واكتب الخدمة المطلوبة.'); return; }
@@ -686,12 +704,8 @@ export default function App() {
       });
       if (error) throw error;
       await loadSupabaseData();
-      Alert.alert(
-        'تم التحديث',
-        isRequestApprover(currentUser)
-          ? 'تم اعتماد الطلب نهائيًا.'
-          : 'تمت الموافقة على الطلب في المرحلة الأولى.'
-      );
+      setSendSuccessVisible(true);
+      setTimeout(() => setSendSuccessVisible(false), 1000);
     } catch (e: any) {
       Alert.alert(
         'تعذر اعتماد الطلب',
@@ -710,8 +724,8 @@ export default function App() {
           try {
             const { error } = await supabase.rpc('reject_request', { p_id: id, p_reason: reason || 'مرفوض بدون ذكر أسباب' });
             if (error) throw error;
-            Alert.alert('تم الرفض', 'تم رفض الطلب وحفظ السبب.');
-            loadSupabaseData();
+            await loadSupabaseData();
+            setSendSuccessVisible(true); setTimeout(() => setSendSuccessVisible(false), 1000);
           } catch (e: any) {
             Alert.alert('تعذر رفض الطلب', e?.message || 'تحقق من الصلاحيات.');
           }
@@ -722,8 +736,8 @@ export default function App() {
         try {
           const { error } = await supabase.rpc('reject_request', { p_id: id, p_reason: 'تم الرفض بواسطة المسؤول' });
           if (error) throw error;
-          Alert.alert('تم الرفض', 'تم رفض الطلب بنجاح.');
-          loadSupabaseData();
+          await loadSupabaseData();
+          setSendSuccessVisible(true); setTimeout(() => setSendSuccessVisible(false), 1000);
         } catch (e: any) {
           Alert.alert('خطأ', e?.message);
         }
@@ -810,7 +824,7 @@ export default function App() {
     const updated: RequestItem = {
       ...editingDispatchRequest,
       workshop: dispatchEditForm.workshop.trim(),
-      engineer: dispatchEditForm.engineer.trim(),
+      engineer: '',
       faultType: dispatchEditForm.faultType.trim(),
       requiredWork: dispatchEditForm.requiredWork.trim(),
       client: dispatchEditForm.client.trim(),
@@ -819,8 +833,8 @@ export default function App() {
     };
 
     if (updated.type === 'إرسالية صيانة' &&
-        (!updated.workshop || !updated.engineer || !updated.faultType || !updated.requiredWork)) {
-      Alert.alert('بيانات ناقصة', 'أكمل الورشة والمهندس والعطل والعمل المطلوب قبل الحفظ.');
+        (!updated.workshop || !updated.faultType || !updated.requiredWork)) {
+      Alert.alert('بيانات ناقصة', 'أكمل الورشة والعطل والعمل المطلوب قبل الحفظ.');
       return;
     }
     if (updated.type === 'إرسالية خدمات بنشر' &&
@@ -859,7 +873,7 @@ export default function App() {
           .upsert({
             request_id: Number(updated.id),
             workshop: updated.workshop || null,
-            engineer: updated.engineer || null,
+            engineer: null,
             fault_type: updated.faultType || null,
             fault_cause: dispatchEditForm.faultCause.trim() || updated.faultType || null,
             required_work: updated.requiredWork || null,
@@ -904,7 +918,7 @@ export default function App() {
       const printReq = {
         ...req,
         workshop: dispatchData?.workshop || req.workshop,
-        engineer: dispatchData?.engineer || req.engineer,
+        engineer: '',
         faultType: dispatchData?.fault_type || req.faultType,
         requiredWork: dispatchData?.required_work || req.requiredWork,
       };
@@ -1047,7 +1061,7 @@ export default function App() {
 
         <div class="center-title">طلب خدمات بنشر</div>
 
-        <p>الإخوة / <b>${escapeHtml(req.client || 'مزود الخدمة')}</b> المحترمون،،،</p>
+        <p>الإخوة / <b>${escapeHtml(req.workshop || 'الورشة المحددة')}</b> المحترمون،،،</p>
         <p>بعد التحية،،</p>
         <p>يرجى عمل الخدمات أدناه للسيارة الموضحة بياناتها أعلاه:</p>
 
@@ -1171,45 +1185,52 @@ export default function App() {
   );
 
   const renderPricing = () => {
-    const pricingGroups: Record<string, { icon: string; items: string[] }> = {
-      'تسعير الوقود': { icon: '⛽', items: fuelTypes },
-      'تسعير الزيوت': { icon: '🛢️', items: oils },
-      'تسعير قطع الغيار': { icon: '🔧', items: parts },
-      'تسعير الصيانة': { icon: '🛠️', items: maintenanceItems },
-      'تسعير البطاريات': { icon: '🔋', items: batteries },
-      'تسعير الإطارات': { icon: '🛞', items: tires },
+    const pricingGroups: Record<string, { icon: string; category: string }> = {
+      'تسعير الوقود': { icon: '⛽', category: 'الوقود' },
+      'تسعير الزيوت': { icon: '🛢️', category: 'الزيوت' },
+      'تسعير قطع الغيار': { icon: '🔧', category: 'قطع الغيار' },
+      'تسعير الصيانة': { icon: '🛠️', category: 'الصيانة' },
+      'تسعير البطاريات': { icon: '🔋', category: 'البطاريات' },
+      'تسعير الإطارات': { icon: '🛞', category: 'الإطارات' },
     };
-    const selectedItems = pricingCategoryModal ? pricingGroups[pricingCategoryModal]?.items || [] : [];
+    const selectedCategory = pricingCategoryModal ? pricingGroups[pricingCategoryModal]?.category : '';
+    const selectedItems = selectedCategory ? priceRows.filter((x:any) => x.category === selectedCategory) : [];
+    const savePrice = async (row:any, raw:string) => {
+      const value = Number(String(raw).replace(/[^0-9.]/g, ''));
+      if (!Number.isFinite(value) || value < 0) { Alert.alert('سعر غير صحيح','أدخل قيمة رقمية صحيحة.'); return; }
+      try {
+        setPriceBusy(true);
+        const { error } = await supabase.from('app_prices').update({ price:value, is_active:value > 0, updated_at:new Date().toISOString(), updated_by:currentUser?.authId || currentUser?.profile?.id || null }).eq('id',row.id);
+        if (error) throw error;
+        setPriceRows((prev:any[])=>prev.map(x=>x.id===row.id?{...x,price:value,is_active:value>0}:x));
+        setPrices((prev:any)=>({...prev,[row.item_name]:value}));
+      } catch(e:any) { Alert.alert('تعذر حفظ السعر',e?.message || 'تحقق من صلاحيات جدول الأسعار.'); }
+      finally { setPriceBusy(false); }
+    };
     return (
       <View>
         <Text style={styles.sectionTitle}>الأسعار</Text>
-        <Text style={styles.helper}>اختر نافذة التسعير المطلوبة ثم أضف أو عدّل سعر كل صنف.</Text>
-        {Object.entries(pricingGroups).map(([title, group]) => (
-          <TouchableOpacity key={title} style={styles.menuCard} onPress={() => setPricingCategoryModal(title)}>
+        <Text style={styles.helper}>الأسعار تُقرأ وتُحفظ مباشرة في قاعدة البيانات. السعر صفر يعني أن الصنف غير مفعّل.</Text>
+        {Object.entries(pricingGroups).map(([title, group]) => {
+          const count = priceRows.filter((x:any)=>x.category===group.category).length;
+          return <TouchableOpacity key={title} style={styles.menuCard} onPress={()=>setPricingCategoryModal(title)}>
             <View style={styles.menuIcon}><Text style={styles.menuIconText}>{group.icon}</Text></View>
-            <View style={{flex:1}}>
-              <Text style={styles.menuTitle}>{title}</Text>
-              <Text style={styles.menuSub}>{group.items.length} صنف</Text>
-            </View>
+            <View style={{flex:1}}><Text style={styles.menuTitle}>{title}</Text><Text style={styles.menuSub}>{count} صنف من قاعدة البيانات</Text></View>
             <Text style={styles.chevron}>‹</Text>
-          </TouchableOpacity>
-        ))}
-        <Modal visible={!!pricingCategoryModal} transparent animationType="slide" onRequestClose={() => setPricingCategoryModal(null)}>
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>{pricingCategoryModal}</Text>
-              <ScrollView style={{maxHeight:480}}>
-                {selectedItems.map(item => (
-                  <View key={item} style={styles.priceRow}>
-                    <Text style={[styles.cardText,{flex:1}]}>{item}</Text>
-                    <TextInput style={styles.priceInput} keyboardType="numeric" value={String(prices[item] ?? 0)}
-                      onChangeText={v => setPrices(p => ({ ...p, [item]: Number(v.replace(/[^\d]/g, '')) || 0 }))} />
-                  </View>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={styles.secondaryBtn} onPress={() => setPricingCategoryModal(null)}><Text style={styles.btnText}>حفظ وإغلاق</Text></TouchableOpacity>
-            </View>
-          </View>
+          </TouchableOpacity>;
+        })}
+        <Modal visible={!!pricingCategoryModal} transparent animationType="slide" onRequestClose={()=>setPricingCategoryModal(null)}>
+          <View style={styles.modalOverlay}><View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{pricingCategoryModal}</Text>
+            <ScrollView style={{maxHeight:480}}>
+              {selectedItems.map((row:any)=><View key={row.id} style={styles.priceRow}>
+                <View style={{flex:1}}><Text style={styles.cardText}>{row.item_name}</Text><Text style={styles.helper}>{row.is_active?'مفعّل':'غير مفعّل'}</Text></View>
+                <TextInput style={styles.priceInput} keyboardType="decimal-pad" defaultValue={String(row.price ?? 0)} onEndEditing={e=>savePrice(row,e.nativeEvent.text)} />
+              </View>)}
+              {selectedItems.length===0?<Text style={styles.emptyText}>لا توجد أصناف لهذا التصنيف في جدول الأسعار.</Text>:null}
+            </ScrollView>
+            <TouchableOpacity style={styles.secondaryBtn} disabled={priceBusy} onPress={()=>setPricingCategoryModal(null)}><Text style={styles.btnText}>{priceBusy?'جارٍ الحفظ...':'إغلاق'}</Text></TouchableOpacity>
+          </View></View>
         </Modal>
       </View>
     );
@@ -1278,20 +1299,21 @@ export default function App() {
           <View key={r.id} style={styles.card}>
             <View style={styles.cardHeader}><Text style={styles.cardId}>{r.id}</Text><Text style={styles.badge}>{r.status}</Text></View>
             <Text style={styles.cardTitle}>طلب {r.type}</Text>
+            <Text style={styles.cardText}>اسم السيارة: {fleet.find(v => v.carNumber === r.vehicleId)?.name || '—'}</Text>
             <Text style={styles.cardText}>رقم السيارة: {r.vehicleId}</Text>
             <Text style={styles.cardText}>السائق: {r.driver}</Text>
             <Text style={styles.cardText}>التاريخ: {r.date}</Text>
             <Text style={styles.cardText}>الكمية: {r.qty}</Text>
             <Text style={styles.cardText}>القيمة: {money(r.total)}</Text>
             {r.station ? <Text style={styles.cardText}>المحطة: {r.station}</Text> : null}
-            {r.notes ? <Text style={styles.cardText}>الملاحظات: {r.notes}</Text> : null}
+            {r.allocation ? <Text style={styles.cardText}>المخصص: {r.allocation}</Text> : null}
             {r.faultType ? <Text style={styles.cardText}>العطل: {r.faultType}</Text> : null}
             {r.requiredWork ? <Text style={styles.cardText}>العمل المطلوب: {r.requiredWork}</Text> : null}
             {r.serviceDescription ? <Text style={styles.cardText}>وصف الخدمة: {r.serviceDescription}</Text> : null}
             <Text style={styles.workflowTitle}>المرحلة: {r.workflow || 'المسؤول المباشر'}</Text>
             {r.imageUri ? <View><Image source={{uri:r.imageUri}} style={styles.requestImage} /></View> : null}
 
-            {(r.type === 'إرسالية صيانة' || r.type === 'إرسالية خدمات بنشر') && isRequestApprover(currentUser) && (
+            {(r.type === 'إرسالية صيانة' || r.type === 'إرسالية خدمات بنشر') && isRequestApprover(currentUser) && r.status !== 'تمت الموافقة' && (
               <View style={styles.actionRow}>
                 <TouchableOpacity style={[styles.actionBtn, {backgroundColor: '#0F766E'}]} onPress={() => openDispatchEditor(r)}>
                   <Text style={styles.btnText}>تعديل الطلب</Text>
@@ -2263,11 +2285,15 @@ export default function App() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom:10}}>{['الكل','تحت المراجعة','المقبولة','المرفوضة'].map(st => <TouchableOpacity key={st} onPress={() => setAdminReportStatus(st)} style={[styles.choice, adminReportStatus===st && styles.choiceActive]}><Text style={[styles.choiceText, adminReportStatus===st && styles.choiceTextActive]}>{st}</Text></TouchableOpacity>)}</ScrollView>
         {isAdmin ? <View style={{marginBottom:10}}>
           <TouchableOpacity onPress={() => setCarRangeOpen(v => !v)} style={[styles.choice,{alignSelf:'flex-end'}]}><Text style={styles.choiceText}>🚘 {carRangeOpen ? 'إخفاء نطاق السيارات' : 'تحديد من سيارة إلى سيارة'}</Text></TouchableOpacity>
-          {carRangeOpen ? <View style={{flexDirection:'row-reverse',gap:8,marginTop:8}}>
-            <View style={{flex:1}}><Text style={styles.cardText}>من سيارة</Text><ScrollView style={{maxHeight:125}}>{fleet.map(v=><TouchableOpacity key={v.id} onPress={()=>setAdminCarFrom(v.carNumber)} style={[styles.choice,adminCarFrom===v.carNumber&&styles.choiceActive]}><Text style={[styles.choiceText,adminCarFrom===v.carNumber&&styles.choiceTextActive]}>{v.carNumber}</Text></TouchableOpacity>)}</ScrollView></View>
-            <View style={{flex:1}}><Text style={styles.cardText}>إلى سيارة</Text><ScrollView style={{maxHeight:125}}>{fleet.map(v=><TouchableOpacity key={v.id} onPress={()=>setAdminCarTo(v.carNumber)} style={[styles.choice,adminCarTo===v.carNumber&&styles.choiceActive]}><Text style={[styles.choiceText,adminCarTo===v.carNumber&&styles.choiceTextActive]}>{v.carNumber}</Text></TouchableOpacity>)}</ScrollView></View>
+          {carRangeOpen ? <View style={{gap:8,marginTop:8}}>
+            <TouchableOpacity style={[styles.choice, allCarsSelected && styles.choiceActive]} onPress={()=>{setAllCarsSelected(true);setAdminCarFrom('');setAdminCarTo('');setCarPicker(null);}}><Text style={[styles.choiceText,allCarsSelected&&styles.choiceTextActive]}>☑ جميع السيارات</Text></TouchableOpacity>
+            <View style={{flexDirection:'row-reverse',gap:8}}>
+              <TouchableOpacity disabled={allCarsSelected} style={[styles.choice,{flex:1},allCarsSelected&&{opacity:0.4}]} onPress={()=>setCarPicker('from')}><Text style={styles.choiceText}>من سيارة: {adminCarFrom || 'اختر السيارة'}</Text></TouchableOpacity>
+              <TouchableOpacity disabled={allCarsSelected} style={[styles.choice,{flex:1},allCarsSelected&&{opacity:0.4}]} onPress={()=>setCarPicker('to')}><Text style={styles.choiceText}>إلى سيارة: {adminCarTo || 'اختر السيارة'}</Text></TouchableOpacity>
+            </View>
+            <Modal visible={!!carPicker} transparent animationType="slide" onRequestClose={()=>setCarPicker(null)}><View style={styles.modalOverlay}><View style={styles.modalContent}><Text style={styles.modalTitle}>{carPicker==='from'?'اختر سيارة البداية':'اختر سيارة النهاية'}</Text><ScrollView style={{maxHeight:420}}>{[...fleet].sort((a,b)=>Number(a.carNumber)-Number(b.carNumber)).map(v=><TouchableOpacity key={v.id} style={styles.choice} onPress={()=>{if(carPicker==='from')setAdminCarFrom(v.carNumber);else setAdminCarTo(v.carNumber);setAllCarsSelected(false);setCarPicker(null);}}><Text style={styles.choiceText}>{v.carNumber} — {v.name}</Text></TouchableOpacity>)}</ScrollView><TouchableOpacity style={styles.secondaryBtn} onPress={()=>setCarPicker(null)}><Text style={styles.btnText}>إغلاق</Text></TouchableOpacity></View></View></Modal>
+            <TouchableOpacity onPress={()=>{setAdminCarFrom('');setAdminCarTo('');setAllCarsSelected(false);}}><Text style={{textAlign:'right',color:COLORS.primary}}>مسح التحديد</Text></TouchableOpacity>
           </View> : null}
-          {(adminCarFrom || adminCarTo) ? <TouchableOpacity onPress={()=>{setAdminCarFrom('');setAdminCarTo('');}}><Text style={{textAlign:'right',color:COLORS.primary,marginTop:5}}>مسح نطاق السيارات</Text></TouchableOpacity> : null}
         </View> : null}
         <View style={{flexDirection:'row-reverse', gap:8, marginBottom:12}}>{(['إجمالي','تفصيلي'] as const).map(mode => <TouchableOpacity key={mode} onPress={() => setAdminReportMode(mode)} style={[styles.choice, adminReportMode===mode && styles.choiceActive, {flex:1, alignItems:'center'}]}><Text style={[styles.choiceText, adminReportMode===mode && styles.choiceTextActive]}>{mode}</Text></TouchableOpacity>)}</View>
         <View style={styles.summaryCard}><Text style={styles.summaryTitle}>إجمالي المصاريف والطلبات</Text><Text style={styles.summaryValue}>{money(total)}</Text><Text style={styles.summarySub}>{rows.length} عملية | إجمالي الكميات: {totalQty}</Text></View>
@@ -2275,8 +2301,8 @@ export default function App() {
         {adminReportMode === 'إجمالي' ? <View style={styles.card}><Text style={styles.cardTitle}>ملخص التقرير</Text><Text style={styles.cardText}>الفئة: {adminReportCategory}</Text><Text style={styles.cardText}>عدد العمليات: {rows.length}</Text><Text style={styles.cardText}>إجمالي الكمية: {totalQty}</Text><Text style={styles.cardText}>إجمالي التكلفة: {money(total)}</Text></View> : <View style={styles.card}>
           <Text style={styles.cardTitle}>البيانات التفصيلية</Text>
           <ScrollView horizontal><View>
-            <View style={{flexDirection:'row-reverse',backgroundColor:'#F0E5E5',paddingVertical:9}}>{['رقم العملية','التاريخ','السيارة','السائق/المقدم','النوع/الصنف','الكمية','الوحدة','سعر الوحدة','الإجمالي','المحطة/العميل','الحالة','ملاحظات'].map(h=><Text key={h} style={{width:112,textAlign:'center',fontWeight:'900',paddingHorizontal:3}}>{h}</Text>)}</View>
-            {rows.map(r=><View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.id,r.date,r.vehicleId,r.driver,r.itemName || r.fuelType || r.oilType || r.type,String(r.qty ?? ''),r.unit || '—',String(r.qty ? Number(r.total||0)/Number(r.qty) : 0),String(r.total ?? 0),r.station || r.client || '—',r.status,r.notes || '—'].map((v,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{v || '—'}</Text>)}</View>)}
+            <View style={{flexDirection:'row-reverse',backgroundColor:'#F0E5E5',paddingVertical:9}}>{['رقم العملية','التاريخ','رقم السيارة','السائق/المقدم','النوع/الصنف','الكمية','الوحدة','سعر الوحدة','الإجمالي','المحطة/العميل'].map(h=><Text key={h} style={{width:112,textAlign:'center',fontWeight:'900',paddingHorizontal:3}}>{h}</Text>)}</View>
+            {rows.map(r=><View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.id,r.date,r.vehicleId,r.driver,r.itemName || r.fuelType || r.oilType || r.type,String(r.qty ?? ''),r.unit || '—',String(r.qty ? Number(r.total||0)/Number(r.qty) : 0),String(r.total ?? 0),r.station || r.client || '—'].map((v,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{v || '—'}</Text>)}</View>)}
           </View></ScrollView>
           <TouchableOpacity style={[styles.secondaryBtn,{marginTop:10}]} onPress={()=>{setReportPreviewRows(rows);setReportPreviewTitle('معاينة التقرير العام');}}><Text style={styles.btnText}>معاينة داخل التطبيق</Text></TouchableOpacity>
         </View>}
@@ -2355,7 +2381,7 @@ export default function App() {
           <View style={styles.requestModalHeader}><Text style={styles.modalTitle}>طلب {serviceTypeModal}</Text><TouchableOpacity onPress={() => { setServiceTypeModal(null); resetRequestForm(); }}><Text style={styles.closeText}>إغلاق</Text></TouchableOpacity></View>
           <ScrollView style={styles.requestFormScroll} contentContainerStyle={styles.requestFormContent} keyboardShouldPersistTaps="handled">
             <View style={styles.infoPill}><Text style={styles.infoPillText}>السيارة: {currentUser?.id}</Text><Text style={styles.infoPillText}>التاريخ: {TODAY()}</Text></View>
-            <Text style={styles.label}>جهة الإرسالية — اختر واحدة</Text>
+            {serviceTypeModal !== 'إرسالية صيانة' ? <><Text style={styles.label}>جهة الإرسالية — اختر واحدة</Text>
             <View style={[styles.choiceRow, { flexDirection: 'row-reverse', flexWrap: 'wrap', marginBottom: 12 }]}>
               {['النقيل', 'الإدارة'].map(destination => (
                 <TouchableOpacity key={destination} onPress={() => setAdministrativeDestination(destination)}
@@ -2363,9 +2389,9 @@ export default function App() {
                   <Text style={[styles.choiceText, administrativeDestination === destination && styles.choiceTextActive]}>{destination}</Text>
                 </TouchableOpacity>
               ))}
-            </View>
+            </View></> : null}
             
-            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}</>}
+            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocations, setSelectedAllocation)}</>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
             {serviceTypeModal === 'بطاريات' && renderSelect('نوع البطارية', selectedBattery, batteries, setSelectedBattery)}
             {serviceTypeModal === 'قطع غيار' && renderSelect('قطعة الغيار', selectedPart, parts, setSelectedPart)}
@@ -2375,7 +2401,6 @@ export default function App() {
             {serviceTypeModal === 'إرسالية صيانة' && (
               <>
                 {renderSelect('الورشة', selectedWorkshop, workshops, setSelectedWorkshop)}
-                {renderSelect('المهندس', selectedEngineer, engineers, setSelectedEngineer)}
                 <Text style={styles.label}>سبب المشكلة / العطل</Text>
                 <TextInput style={[styles.input,{minHeight:65}]} value={faultType} onChangeText={setFaultType} placeholder="اكتب وصف العطل هنا..." multiline textAlign="right" />
                 <Text style={styles.label}>الإجراء المطلوب</Text>
@@ -2597,8 +2622,6 @@ export default function App() {
                   <>
                     <Text style={styles.label}>الورشة</Text>
                     <TextInput style={styles.input} value={dispatchEditForm.workshop} onChangeText={value => setDispatchEditForm(prev => ({...prev, workshop: value}))} textAlign="right" />
-                    <Text style={styles.label}>المهندس</Text>
-                    <TextInput style={styles.input} value={dispatchEditForm.engineer} onChangeText={value => setDispatchEditForm(prev => ({...prev, engineer: value}))} textAlign="right" />
                     <Text style={styles.label}>سبب المشكلة / العطل</Text>
                     <TextInput style={[styles.input,{minHeight:75}]} value={dispatchEditForm.faultType} onChangeText={value => setDispatchEditForm(prev => ({...prev, faultType: value}))} multiline textAlign="right" />
                     <Text style={styles.label}>الإجراء المطلوب</Text>
