@@ -8,19 +8,22 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supabase Integration Setup & Keys
 const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpzeG5kcXhoZ2lyd3J0bWhzbmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MjIxMjksImV4cCI6MjEwNzI5ODEyOX0.g0jM3FppnlUYhVluTpjnK56XUOkIeWvpO4cl_I_Um1k";
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
+    storage: AsyncStorage,
     persistSession: true,
     autoRefreshToken: true,
+    detectSessionInUrl: false,
   }
 });
 
-const APP_VERSION = '1.97.67';
-const APP_BUILD = '97';
+const APP_VERSION = '1.98.68';
+const APP_BUILD = '88 - تعديلات مطلوبة';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -49,7 +52,7 @@ type RequestItem = {
   servicesStatus?: string;
   applicantId?: string;
   assignedTo?: string;
-  currentStep?: string;
+  currentStep?: string; allocation?: string;
 };
 
 type PermissionSet = {
@@ -169,6 +172,8 @@ export default function App() {
   const [newItem, setNewItem] = useState('');
   
   const [selectedStation, setSelectedStation] = useState(stations[0]);
+  const [allocationOptions, setAllocationOptions] = useState<string[]>(['صنعاء', 'الجديدة', 'ذمار']);
+  const [selectedAllocation, setSelectedAllocation] = useState('');
   const [selectedFuel, setSelectedFuel] = useState(fuelTypes[0]);
   const [selectedOil, setSelectedOil] = useState(oils[0]);
   const [selectedBattery, setSelectedBattery] = useState(batteries[0]);
@@ -200,6 +205,10 @@ export default function App() {
   const [adminReportCategory, setAdminReportCategory] = useState('الكل');
   const [adminReportMode, setAdminReportMode] = useState<'إجمالي' | 'تفصيلي'>('تفصيلي');
   const [adminReportMonth, setAdminReportMonth] = useState('الكل');
+  const [reportFromDate, setReportFromDate] = useState('');
+  const [reportToDate, setReportToDate] = useState('');
+  const [adminCarFrom, setAdminCarFrom] = useState('');
+  const [adminCarTo, setAdminCarTo] = useState('');
   const [adminReportYear, setAdminReportYear] = useState('الكل');
   const [adminReportStatus, setAdminReportStatus] = useState('الكل');
   const [darkMode, setDarkMode] = useState(false);
@@ -213,13 +222,13 @@ export default function App() {
   const [maintenanceServiceSubModal, setMaintenanceServiceSubModal] = useState<'صيانة' | 'بنشر' | null>(null);
 
   const codingMap: Record<string, string[]> = {
-    'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
+    'المخصصات': allocationOptions, 'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
     'الإطارات': tires, 'المحطات': stations, 'الصيانة': maintenanceItems,
     'الورش': workshops, 'العملاء': clients, 'المهندسين': engineers, 'مالك السيارة': ownershipTypes,
     'نوع المهمة': tripTypes, 'الوجهة/المنطقة': tripDestinations,
   };
   const codingSetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-    'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+    'المخصصات': setAllocationOptions, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
     'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
     'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes, 'نوع المهمة': setTripTypes,
@@ -334,7 +343,7 @@ export default function App() {
           return {
             id: String(r.id), approvalNumber: r.approval_number || '', vehicleId: String(r.vehicle_id || ''), driver: r.driver_name || '',
             type: r.service_type || 'خدمة', date: String(r.request_date || r.created_at || TODAY()).slice(0, 10),
-            qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة',
+            qty: Number(r.quantity || 0), total: Number(r.total || 0), status: r.status || 'تحت المراجعة', allocation: r.allocation || '',
             notes: stored.appNotes || '', station: r.station || '', unit: r.unit || '',
             currOdo: r.odometer == null ? undefined : Number(r.odometer), workflow: stage,
             imageUri: extra.imageUri, fuelType: extra.fuelType, oilType: extra.oilType,
@@ -491,7 +500,7 @@ export default function App() {
     setFaultType(''); setRequiredWork(''); setServiceDescription('');
     setSelectedWorkshop(workshops[0] || ''); setSelectedEngineer(engineers[0] || '');
     setSelectedClient(clients[0] || ''); setSelectedStation(stations[0] || '');
-    setSelectedFuel(fuelTypes[0] || ''); setSelectedOil(oils[0] || '');
+    setSelectedFuel(fuelTypes[0] || ''); setSelectedAllocation(''); setSelectedOil(oils[0] || '');
     setSelectedBattery(batteries[0] || ''); setSelectedPart(parts[0] || '');
     setSelectedTire(tires[0] || ''); setSelectedMaintenance(maintenanceItems[0] || '');
     setSelectedUnit('دبة');
@@ -580,7 +589,8 @@ export default function App() {
     if (serviceTypeModal === 'وقود') {
       const qty = Number(reqQty);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
-      item.qty = qty; item.total = qty * currentUnitPrice(); item.station = selectedStation; item.fuelType = selectedFuel;
+      if (!selectedAllocation) { Alert.alert('تنبيه', 'اختر المخصص قبل إدخال الكمية.'); return; }
+      item.qty = qty; item.total = qty * currentUnitPrice(); item.station = selectedStation; item.fuelType = selectedFuel; item.allocation = selectedAllocation;
     } else if (serviceTypeModal === 'زيوت') {
       const qty = Number(reqQty); const odo = Number(currOdometer); const prev = lastOdometer(currentUser.id);
       if (!qty || qty <= 0) { Alert.alert('تنبيه', 'يرجى إدخال كمية صحيحة.'); return; }
@@ -624,7 +634,7 @@ export default function App() {
         vehicle_id: item.vehicleId, applicant_id: user.id,
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
-        total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
+        total: item.total, station: item.station || null, allocation: item.allocation || null, odometer: item.currOdo ?? null,
         notes: makeStoredNotes(item), image_url: null, administrative_destination: administrativeDestination,
         current_step: 'المسؤول المباشر', assigned_to: managerAssignment.manager_user_id,
         approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
@@ -942,11 +952,10 @@ export default function App() {
             <div class="salute"><span>الأخوة / ${workshop} المحترمون</span><span>بعد التحية،،،</span></div>
             <div class="text">الرجاء إجراء ما يلي على السيارة المذكورة أدناه وإفادتنا بتقرير يوضح نوع العطل وسببه:</div>
             <div class="vehicle-grid">
-              <div><b>اسم السيارة:</b> ${carName}</div>
+              <div><b>اسم السيارة:</b> ${carName || carType}</div>
               <div><b>رقم السيارة:</b> ${carNumber}</div>
-              <div><b>نوع السيارة:</b> ${carType}</div>
               <div><b>الموديل:</b> ${model}</div>
-              <div><b>السائق:</b> ${driver}</div>
+              <div><b>السائق:</b><div class="line"></div><div style="margin-top:4px">اسم السائق: ${driver}</div></div>
               <div><b>الجهة المعنية:</b> ${client}</div>
             </div>
             <div class="field"><b>نوع العطل:</b><div class="line">${fault}</div></div>
@@ -996,8 +1005,8 @@ export default function App() {
       <head>
         <meta charset="utf-8">
         <style>
-          body { font-family: 'Cairo', Tahoma, Arial, sans-serif; padding: 20px; color: #263238; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 15px; }
+          @page { size: A4; margin: 14mm; } body { font-family: 'Cairo', Tahoma, Arial, sans-serif; padding: 0; color: #263238; }
+          .header { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 15px; } .brand-logo { width: 76px; height: 76px; object-fit: contain; justify-self: center; }
           .right-title { font-weight: bold; font-size: 16px; color: #C0272D; }
           .sub-title { font-size: 13px; font-weight: normal; margin-top: 4px; }
           .center-title { text-align: center; font-size: 20px; font-weight: bold; margin: 15px 0; text-decoration: underline; }
@@ -1015,12 +1024,13 @@ export default function App() {
             <div>تاريخ الطلب: ${req.date}</div>
             <div>رقم العملية: ${req.id}</div>
           </div>
+          <img class="brand-logo" src="${COMPANY_LOGO_DATA_URI}" />
         </div>
 
         <div class="center-title">طلب خدمات بنشر</div>
 
-        <p>الإخوة / <b>${escapeHtml(req.client || 'مزود الخدمة')}</b> المحترمون،،،</p>
-        <p>بعد التحية،،</p>
+        <p style="display:flex;justify-content:space-between"><span>الإخوة / <b>${escapeHtml(req.client || 'مزود الخدمة')}</b></span><b>المحترمون</b></p>
+        <p style="text-align:center;font-weight:bold">بعد التحية،،</p>
         <p>يرجى عمل الخدمات أدناه للسيارة الموضحة بياناتها أعلاه:</p>
 
         <div class="section">
@@ -2100,6 +2110,8 @@ export default function App() {
     ];
 
     const filteredRows = myRows.filter(r => {
+      if (reportFromDate && String(r.date || '') < reportFromDate) return false;
+      if (reportToDate && String(r.date || '') > reportToDate) return false;
       if (selectedRepCat === 'رحلات') return r.type.includes('رحلة') || r.type.includes('مهمة');
       return r.type === selectedRepCat;
     });
@@ -2110,6 +2122,7 @@ export default function App() {
     return (
       <View>
         <Text style={styles.sectionTitle}>تقارير السيارة والأداء</Text>
+        <View style={{flexDirection:'row-reverse',gap:8,marginBottom:10}}><View style={{flex:1}}><Text style={styles.label}>من تاريخ (YYYY-MM-DD)</Text><TextInput style={styles.input} value={reportFromDate} onChangeText={setReportFromDate} placeholder="2026-01-01" /></View><View style={{flex:1}}><Text style={styles.label}>إلى تاريخ (YYYY-MM-DD)</Text><TextInput style={styles.input} value={reportToDate} onChangeText={setReportToDate} placeholder="2026-12-31" /></View></View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom: 12}}>
           {reportCategories.map(cat => (
             <TouchableOpacity key={cat.key} onPress={() => setSelectedRepCat(cat.key)}
@@ -2150,7 +2163,7 @@ export default function App() {
             <View key={r.id} style={styles.card}>
               <View style={styles.cardHeader}><Text style={styles.cardId}>رقم العملية: {r.id}</Text><Text style={styles.badge}>{r.status}</Text></View>
               <Text style={styles.cardText}>التاريخ: {r.date}</Text>
-              <Text style={styles.cardText}>الكمية أو المخصص: {r.qty}</Text>
+              <Text style={styles.cardText}>النوع: {r.type}</Text><Text style={styles.cardText}>الكمية: {r.qty}</Text>{r.allocation ? <Text style={styles.cardText}>المخصص: {r.allocation}</Text> : null}<Text style={styles.cardText}>السعر: {r.qty ? money(r.total / r.qty) : money(0)}</Text><Text style={styles.cardText}>العميل: {r.client || '—'}</Text>
               <Text style={styles.cardText}>الإجمالي/القيمة: {money(r.total)}</Text>
               {r.station ? <Text style={styles.cardText}>المحطة: {r.station}</Text> : null}
               {r.itemName ? <Text style={styles.cardText}>الصنف: {r.itemName}</Text> : null}
@@ -2181,6 +2194,9 @@ export default function App() {
     if (adminReportCategory !== 'الكل') {
       rows = rows.filter(r => adminReportCategory === 'رحلات' ? /رحلة|مهمة/.test(r.type) : r.type.includes(adminReportCategory));
     }
+    if (reportFromDate) rows = rows.filter(r => String(r.date || '') >= reportFromDate);
+    if (reportToDate) rows = rows.filter(r => String(r.date || '') <= reportToDate);
+    if (isAdmin && (adminCarFrom || adminCarTo)) rows = rows.filter(r => { const n = Number(r.vehicleId); return (!adminCarFrom || n >= Number(adminCarFrom)) && (!adminCarTo || n <= Number(adminCarTo)); });
     if (adminReportMonth !== 'الكل') rows = rows.filter(r => String(r.date || '').slice(5,7) === adminReportMonth);
     if (adminReportYear !== 'الكل') rows = rows.filter(r => String(r.date || '').slice(0,4) === adminReportYear);
     const approvedStatuses = ['تمت الموافقة', 'موافق', 'معتمد', 'مقبول'];
@@ -2198,6 +2214,8 @@ export default function App() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom: 10}}>
           {reportCategories.map(cat => <TouchableOpacity key={cat.key} onPress={() => setAdminReportCategory(cat.key)} style={[styles.choice, adminReportCategory === cat.key && styles.choiceActive]}><Text style={[styles.choiceText, adminReportCategory === cat.key && styles.choiceTextActive]}>{cat.label}</Text></TouchableOpacity>)}
         </ScrollView>
+        <View style={{flexDirection:'row-reverse',gap:8,marginBottom:10}}><View style={{flex:1}}><Text style={styles.label}>من تاريخ</Text><TextInput style={styles.input} value={reportFromDate} onChangeText={setReportFromDate} placeholder="YYYY-MM-DD" /></View><View style={{flex:1}}><Text style={styles.label}>إلى تاريخ</Text><TextInput style={styles.input} value={reportToDate} onChangeText={setReportToDate} placeholder="YYYY-MM-DD" /></View></View>
+        {isAdmin ? <View style={{flexDirection:'row-reverse',gap:8,marginBottom:10}}><View style={{flex:1}}><Text style={styles.label}>من سيارة رقم</Text><TextInput style={styles.input} keyboardType="numeric" value={adminCarFrom} onChangeText={setAdminCarFrom} /></View><View style={{flex:1}}><Text style={styles.label}>إلى سيارة رقم</Text><TextInput style={styles.input} keyboardType="numeric" value={adminCarTo} onChangeText={setAdminCarTo} /></View></View> : null}
         <View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:8, marginBottom:10}}>
           <View style={{flex:1, minWidth:100}}><Text style={styles.cardText}>الشهر</Text><View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:4}}>{['الكل','01','02','03','04','05','06','07','08','09','10','11','12'].map(m => <TouchableOpacity key={m} onPress={() => setAdminReportMonth(m)} style={[styles.choice, adminReportMonth===m && styles.choiceActive]}><Text style={[styles.choiceText, adminReportMonth===m && styles.choiceTextActive]}>{m}</Text></TouchableOpacity>)}</View></View>
           <View style={{minWidth:100}}><Text style={styles.cardText}>السنة</Text><View style={{flexDirection:'row-reverse', flexWrap:'wrap', gap:4}}>{['الكل', ...years].map(y => <TouchableOpacity key={y} onPress={() => setAdminReportYear(y)} style={[styles.choice, adminReportYear===y && styles.choiceActive]}><Text style={[styles.choiceText, adminReportYear===y && styles.choiceTextActive]}>{y}</Text></TouchableOpacity>)}</View></View>
@@ -2294,7 +2312,7 @@ export default function App() {
               ))}
             </View>
             
-            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}</>}
+            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocationOptions, setSelectedAllocation)}</>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
             {serviceTypeModal === 'بطاريات' && renderSelect('نوع البطارية', selectedBattery, batteries, setSelectedBattery)}
             {serviceTypeModal === 'قطع غيار' && renderSelect('قطعة الغيار', selectedPart, parts, setSelectedPart)}
