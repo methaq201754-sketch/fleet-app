@@ -8,6 +8,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
 import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Supabase Integration Setup & Keys
 const SUPABASE_URL = "https://zsxndqxhgirwrtmhsngx.supabase.co";
@@ -16,11 +17,13 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storage: AsyncStorage,
+    detectSessionInUrl: false,
   }
 });
 
-const APP_VERSION = '1.100.70';
-const APP_BUILD = '100';
+const APP_VERSION = '1.101.71';
+const APP_BUILD = '101';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -229,13 +232,13 @@ export default function App() {
   const [maintenanceServiceSubModal, setMaintenanceServiceSubModal] = useState<'صيانة' | 'بنشر' | null>(null);
 
   const codingMap: Record<string, string[]> = {
-    'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
+    'تكويدات المخصصات': allocations, 'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
     'الإطارات': tires, 'المحطات': stations, 'الصيانة': maintenanceItems,
     'الورش': workshops, 'العملاء': clients, 'المهندسين': engineers, 'مالك السيارة': ownershipTypes,
     'نوع المهمة': tripTypes, 'الوجهة/المنطقة': tripDestinations,
   };
   const codingSetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-    'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+    'تكويدات المخصصات': setAllocations, 'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
     'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
     'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
     'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes, 'نوع المهمة': setTripTypes,
@@ -272,7 +275,7 @@ export default function App() {
     __fleetApp: true,
     appNotes: item.notes || '',
     appFields: {
-      fuelType: item.fuelType, oilType: item.oilType, itemName: item.itemName,
+      fuelType: item.fuelType, oilType: item.oilType, itemName: item.itemName, allocation: item.allocation,
       prevOdo: item.prevOdo, currOdo: item.currOdo, distance: item.distance,
       workshop: item.workshop, engineer: item.engineer, faultType: item.faultType,
       requiredWork: item.requiredWork, client: item.client,
@@ -343,7 +346,7 @@ export default function App() {
       if (codingError) console.log('Coding lookup:', codingError.message);
       if (!codingError && codingRows) {
         const categorySetters: Record<string, React.Dispatch<React.SetStateAction<string[]>>> = {
-          'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
+          'تكويدات المخصصات': setAllocations, 'المخصصات': setAllocations, 'المحروقات': setFuelTypes, 'الزيوت': setOils, 'البطاريات': setBatteries,
           'قطع الغيار': setParts, 'الإطارات': setTires, 'المحطات': setStations,
           'الصيانة': setMaintenanceItems, 'الورش': setWorkshops, 'العملاء': setClients,
           'المهندسين': setEngineers, 'مالك السيارة': setOwnershipTypes,
@@ -669,7 +672,7 @@ export default function App() {
         vehicle_id: item.vehicleId, applicant_id: user.id,
         driver_name: item.driver, service_type: item.type, request_date: item.date,
         quantity: item.qty, unit: item.unit || null, unit_price: item.qty ? item.total / item.qty : 0,
-        total: item.total, station: item.station || null, odometer: item.currOdo ?? null,
+        total: item.total, station: item.station || null, allocation: item.allocation || null, odometer: item.currOdo ?? null,
         notes: makeStoredNotes(item), image_url: null, administrative_destination: administrativeDestination,
         current_step: 'المسؤول المباشر', assigned_to: managerAssignment.manager_user_id,
         approval_number: `APP-${String(Date.now()).slice(-6)}`, status: 'تحت المراجعة',
@@ -1171,12 +1174,12 @@ export default function App() {
     <View>
       <Text style={styles.sectionTitle}>التكويدات</Text>
       <Text style={styles.helper}>إضافة وتعديل وحذف التكويدات المستخدمة في الطلبات.</Text>
-      {Object.keys(codingMap).map((key, i) => (
-        <TouchableOpacity key={key} style={styles.menuCard} onPress={() => setCodingModal(key)}>
+      {[...Object.keys(codingMap), 'تكويدات المخصصات'].filter((key,i,arr)=>arr.indexOf(key)===i).map((key, i) => (
+        <TouchableOpacity key={key} style={styles.menuCard} onPress={() => setCodingModal(key === 'تكويدات المخصصات' ? 'المخصصات' : key)}>
           <View style={styles.menuIcon}><Text style={styles.menuIconText}>{['⛽','🛢️','🔋','🔧','🛞','🏪','🛠️','🏭','👥','👨‍🔧','🚙','🧭','📍'][i] || '🧩'}</Text></View>
           <View style={{flex:1}}>
             <Text style={styles.menuTitle}>{key}</Text>
-            <Text style={styles.menuSub}>{codingMap[key].length} عنصر</Text>
+            <Text style={styles.menuSub}>{(codingMap[key] || []).length} عنصر</Text>
           </View>
           <Text style={styles.chevron}>‹</Text>
         </TouchableOpacity>
@@ -1748,9 +1751,9 @@ export default function App() {
                     />
                   </View>
                 ))}
-                <Text style={styles.label}>نوع الملكية</Text>
+                <Text style={styles.label}>المالك</Text>
                 <View style={styles.choiceRow}>
-                  {['شركة', 'خاصة'].map(value => (
+                  {(ownershipTypes.length ? ownershipTypes : ['شركة', 'خاصة']).map(value => (
                     <TouchableOpacity key={value} style={[styles.choice, vehicleForm.ownership === value && styles.choiceActive]}
                       onPress={() => setVehicleForm(p => ({ ...p, ownership: value as any }))}>
                       <Text style={[styles.choiceText, vehicleForm.ownership === value && styles.choiceTextActive]}>{value}</Text>
@@ -2103,12 +2106,20 @@ export default function App() {
       return <View>
         <TouchableOpacity onPress={() => {setSelectedServiceScreenType(null);setRequestStatusFilter('الكل');}} style={[styles.actionBtn,{backgroundColor:COLORS.muted,marginBottom:12}]}><Text style={styles.btnText}>رجوع إلى الرئيسية</Text></TouchableOpacity>
         <Text style={styles.sectionTitle}>{serviceTypes.find(x=>x.type===selectedServiceScreenType)?.label || selectedServiceScreenType}</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>إنشاء طلب</Text>
-          <Text style={styles.cardText}>أنشئ طلبًا جديدًا من هذا النوع، ثم تابع حالته في تقرير الطلبات أسفل الشاشة.</Text>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(createType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity>
+        <View style={{flexDirection:'row-reverse',backgroundColor:'#FFFFFF',borderRadius:14,padding:5,marginBottom:14,borderWidth:1,borderColor:COLORS.border}}>
+          <TouchableOpacity onPress={()=>setSubView('create')} style={{flex:1,paddingVertical:13,alignItems:'center',borderRadius:11,backgroundColor:subView==='create'?COLORS.primary:'#FFFFFF'}}>
+            <Text style={{fontWeight:'900',color:subView==='create'?'#FFFFFF':COLORS.text}}>طلب الخدمة</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={()=>setSubView('report')} style={{flex:1,paddingVertical:13,alignItems:'center',borderRadius:11,backgroundColor:subView==='report'?COLORS.primary:'#FFFFFF'}}>
+            <Text style={{fontWeight:'900',color:subView==='report'?'#FFFFFF':COLORS.text}}>تقارير الطلبات ({typeRows.length})</Text>
+          </TouchableOpacity>
         </View>
-        <View style={{marginTop:4}}>
+        {subView==='create' ? <View style={styles.card}>
+          <Text style={styles.cardTitle}>طلب جديد</Text>
+          <Text style={styles.cardText}>أدخل بيانات الطلب من النموذج التالي.</Text>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(createType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity>
+        </View> : null}
+        {subView==='report' ? <View style={{marginTop:4}}>
           <Text style={styles.sectionTitle}>تقارير الطلبات ({typeRows.length})</Text>
           <Text style={styles.label}>فلترة حسب حالة الطلب</Text>
           <View style={{flexDirection:'row-reverse',flexWrap:'wrap',gap:7,marginBottom:12}}>
@@ -2142,13 +2153,13 @@ export default function App() {
               {r.type==='إرسالية خدمات بنشر'&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintPunctureService(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity>:null}
             </View>;
           })}
-        </View>
+        </View> : null}
       </View>;
     }
     return <View>
       <Text style={styles.sectionTitle}>الرئيسية · طلبات الخدمات</Text>
       <Text style={styles.helper}>اختر نوع الطلب. ستجد في شاشة كل نوع نموذج إنشاء الطلب وتقاريره وحالات الاعتماد.</Text>
-      {serviceTypes.filter(item=>hasPermission(item.permission)).map(item=><TouchableOpacity key={item.type} style={styles.serviceCard} onPress={()=>{setSelectedServiceScreenType(item.type);setRequestStatusFilter('الكل');}}>
+      {serviceTypes.filter(item=>hasPermission(item.permission)).map(item=><TouchableOpacity key={item.type} style={styles.serviceCard} onPress={()=>{setSelectedServiceScreenType(item.type);setRequestStatusFilter('الكل');setSubView('create');}}>
         <View style={styles.serviceIcon}><Text style={{fontSize:25}}>{item.icon}</Text></View>
         <View style={{flex:1}}><Text style={styles.serviceTitle}>{item.label}</Text><Text style={styles.serviceSub}>إنشاء طلب ومتابعة الموافقة والرفض والمراجعة</Text></View>
         <Text style={styles.chevron}>‹</Text>
@@ -2172,7 +2183,8 @@ export default function App() {
     ];
 
     const filteredRows = myRows.filter(r => {
-      if (String(r.date || '').slice(5,7) !== reportMonth || String(r.date || '').slice(0,4) !== reportYear) return false;
+      if (reportMonth !== 'الكل' && String(r.date || '').slice(5,7) !== reportMonth) return false;
+      if (reportYear !== 'الكل' && String(r.date || '').slice(0,4) !== reportYear) return false;
       if (selectedRepCat === 'رحلات') return r.type.includes('رحلة') || r.type.includes('مهمة');
       return r.type === selectedRepCat;
     });
@@ -2184,8 +2196,8 @@ export default function App() {
       <View>
         <Text style={styles.sectionTitle}>تقارير السيارة والأداء</Text>
         <View style={{flexDirection:'row-reverse',gap:8,marginBottom:12}}>
-          <View style={{flex:1}}><Text style={styles.cardText}>الشهر</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0')).map(m=><TouchableOpacity key={m} onPress={()=>setReportMonth(m)} style={[styles.choice,reportMonth===m&&styles.choiceActive]}><Text style={[styles.choiceText,reportMonth===m&&styles.choiceTextActive]}>{m}</Text></TouchableOpacity>)}</ScrollView></View>
-          <View style={{flex:1}}><Text style={styles.cardText}>السنة</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{Array.from(new Set(myRows.map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))).sort().reverse().map(y=><TouchableOpacity key={y} onPress={()=>setReportYear(y)} style={[styles.choice,reportYear===y&&styles.choiceActive]}><Text style={[styles.choiceText,reportYear===y&&styles.choiceActive&&styles.choiceTextActive]}>{y}</Text></TouchableOpacity>)}</ScrollView></View>
+          <View style={{flex:1}}><Text style={styles.cardText}>الشهر</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{['الكل',...Array.from({length:12},(_,i)=>String(i+1).padStart(2,'0'))].map(m=><TouchableOpacity key={m} onPress={()=>setReportMonth(m)} style={[styles.choice,reportMonth===m&&styles.choiceActive]}><Text style={[styles.choiceText,reportMonth===m&&styles.choiceTextActive]}>{m==='الكل'?'كل الأشهر':m}</Text></TouchableOpacity>)}</ScrollView></View>
+          <View style={{flex:1}}><Text style={styles.cardText}>السنة</Text><ScrollView horizontal showsHorizontalScrollIndicator={false}>{['الكل',...Array.from(new Set(myRows.map(r=>String(r.date||'').slice(0,4)).filter(y=>/^\d{4}$/.test(y)))).sort().reverse()].map(y=><TouchableOpacity key={y} onPress={()=>setReportYear(y)} style={[styles.choice,reportYear===y&&styles.choiceActive]}><Text style={[styles.choiceText,reportYear===y&&styles.choiceActive&&styles.choiceTextActive]}>{y==='الكل'?'كل السنوات':y}</Text></TouchableOpacity>)}</ScrollView></View>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRow} style={{marginBottom: 12}}>
           {reportCategories.map(cat => (
@@ -2224,15 +2236,14 @@ export default function App() {
           </View>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>التقرير التفصيلي</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator>
-              <View>
-                <View style={{flexDirection:'row-reverse',backgroundColor:'#F0E5E5',paddingVertical:9}}>
-                  {['رقم العملية','التاريخ','السيارة','النوع','الصنف/الوقود','الكمية','الوحدة','سعر الوحدة','الإجمالي','المحطة/العميل','الحالة','ملاحظات'].map(h=><Text key={h} style={{width:112,textAlign:'center',fontWeight:'900',paddingHorizontal:3}}>{h}</Text>)}
-                </View>
-                {filteredRows.map(r=><View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.id,r.date,r.vehicleId,r.type,r.itemName||r.fuelType||r.oilType||'—',String(r.qty??''),r.unit||'—',String(r.qty?Number(r.total||0)/Number(r.qty):0),String(r.total??0),r.station||r.client||'—',r.status,r.notes||'—'].map((v,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{v||'—'}</Text>)}</View>)}
+            <Text style={styles.cardTitle}>تقرير تفصيلي بكميات {selectedRepCat === 'وقود' ? 'المحروقات' : selectedRepCat}</Text>
+            <Text style={[styles.cardText,{textAlign:'center',fontWeight:'900',marginBottom:8}]}>{reportMonth==='الكل'?'خلال جميع الأشهر':`خلال شهر ${reportMonth}`} {reportYear==='الكل'?'من جميع السنوات':`لسنة ${reportYear}`}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator><View>
+              <View style={{flexDirection:'row-reverse',backgroundColor:'#F0E5E5',paddingVertical:9}}>
+                {['التاريخ','اسم السيارة','رقم اللوحة','اسم السائق','الصنف/الوقود','الكمية','الوحدة','سعر الوحدة','الإجمالي','المحطة'].map(h=><Text key={h} style={{width:112,textAlign:'center',fontWeight:'900',paddingHorizontal:3}}>{h}</Text>)}
               </View>
-            </ScrollView>
+              {filteredRows.map(r=>{const v=fleet.find(x=>String(x.carNumber)===String(r.vehicleId)||String(x.id)===String(r.vehicleId));return <View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.date,v?.name||'—',v?.carNumber||r.vehicleId,r.driver,r.itemName||r.fuelType||r.oilType||'—',String(r.qty??''),r.unit||'—',String(r.qty?Number(r.total||0)/Number(r.qty):0),String(r.total??0),r.station||'—'].map((x,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{x||'—'}</Text>)}</View>})}
+            </View></ScrollView>
           </View>
         )}
 
@@ -2302,7 +2313,7 @@ export default function App() {
           <Text style={styles.cardTitle}>البيانات التفصيلية</Text>
           <ScrollView horizontal><View>
             <View style={{flexDirection:'row-reverse',backgroundColor:'#F0E5E5',paddingVertical:9}}>{['رقم العملية','التاريخ','رقم السيارة','السائق/المقدم','النوع/الصنف','الكمية','الوحدة','سعر الوحدة','الإجمالي','المحطة/العميل'].map(h=><Text key={h} style={{width:112,textAlign:'center',fontWeight:'900',paddingHorizontal:3}}>{h}</Text>)}</View>
-            {rows.map(r=><View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.id,r.date,r.vehicleId,r.driver,r.itemName || r.fuelType || r.oilType || r.type,String(r.qty ?? ''),r.unit || '—',String(r.qty ? Number(r.total||0)/Number(r.qty) : 0),String(r.total ?? 0),r.station || r.client || '—'].map((v,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{v || '—'}</Text>)}</View>)}
+            {rows.map(r=><View key={r.id} style={{flexDirection:'row-reverse',borderBottomWidth:1,borderColor:COLORS.border,paddingVertical:8}}>{[r.id,r.date,(fleet.find(v=>String(v.id)===String(r.vehicleId)||String(v.carNumber)===String(r.vehicleId))?.carNumber || r.vehicleId),r.driver,r.itemName || r.fuelType || r.oilType || r.type,String(r.qty ?? ''),r.unit || '—',String(r.qty ? Number(r.total||0)/Number(r.qty) : 0),String(r.total ?? 0),r.station || r.client || '—'].map((v,i)=><Text key={i} style={{width:112,textAlign:'center',paddingHorizontal:3,fontSize:11}}>{v || '—'}</Text>)}</View>)}
           </View></ScrollView>
           <TouchableOpacity style={[styles.secondaryBtn,{marginTop:10}]} onPress={()=>{setReportPreviewRows(rows);setReportPreviewTitle('معاينة التقرير العام');}}><Text style={styles.btnText}>معاينة داخل التطبيق</Text></TouchableOpacity>
         </View>}
@@ -2391,7 +2402,7 @@ export default function App() {
               ))}
             </View></> : null}
             
-            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocations, setSelectedAllocation)}</>}
+            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocations, setSelectedAllocation)}<Text style={styles.label}>سعر اللتر</Text><TextInput style={styles.readOnlyInput} value={money(price)} editable={false} textAlign="right"/><Text style={styles.label}>الإجمالي</Text><TextInput style={styles.readOnlyInput} value={money(qty*price)} editable={false} textAlign="right"/></>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
             {serviceTypeModal === 'بطاريات' && renderSelect('نوع البطارية', selectedBattery, batteries, setSelectedBattery)}
             {serviceTypeModal === 'قطع غيار' && renderSelect('قطعة الغيار', selectedPart, parts, setSelectedPart)}
