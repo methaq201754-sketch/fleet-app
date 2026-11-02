@@ -22,8 +22,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.101.71';
-const APP_BUILD = '101';
+const APP_VERSION = '1.102.72';
+const APP_BUILD = '102';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -232,7 +232,7 @@ export default function App() {
   const [maintenanceServiceSubModal, setMaintenanceServiceSubModal] = useState<'صيانة' | 'بنشر' | null>(null);
 
   const codingMap: Record<string, string[]> = {
-    'تكويدات المخصصات': allocations, 'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
+    'تكويدات المخصصات': allocations, 'المخصصات': allocations, 'المحروقات': fuelTypes, 'الزيوت': oils, 'البطاريات': batteries, 'قطع الغيار': parts,
     'الإطارات': tires, 'المحطات': stations, 'الصيانة': maintenanceItems,
     'الورش': workshops, 'العملاء': clients, 'المهندسين': engineers, 'مالك السيارة': ownershipTypes,
     'نوع المهمة': tripTypes, 'الوجهة/المنطقة': tripDestinations,
@@ -2402,7 +2402,7 @@ export default function App() {
               ))}
             </View></> : null}
             
-            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocations, setSelectedAllocation)}<Text style={styles.label}>سعر اللتر</Text><TextInput style={styles.readOnlyInput} value={money(price)} editable={false} textAlign="right"/><Text style={styles.label}>الإجمالي</Text><TextInput style={styles.readOnlyInput} value={money(qty*price)} editable={false} textAlign="right"/></>}
+            {serviceTypeModal === 'وقود' && <>{renderSelect('المحطة', selectedStation, stations, setSelectedStation)}{renderSelect('نوع الوقود', selectedFuel, fuelTypes, setSelectedFuel)}{renderSelect('المخصص', selectedAllocation, allocations, setSelectedAllocation)}</>}
             {serviceTypeModal === 'زيوت' && <>{renderSelect('نوع الزيت', selectedOil, oils, setSelectedOil)}<Text style={styles.label}>العداد السابق</Text><TextInput style={styles.readOnlyInput} value={String(prev)} editable={false} textAlign="right" /><Text style={styles.label}>العداد الحالي</Text><TextInput style={styles.input} keyboardType="numeric" value={currOdometer} onChangeText={setCurrOdometer} textAlign="right" /></>}
             {serviceTypeModal === 'بطاريات' && renderSelect('نوع البطارية', selectedBattery, batteries, setSelectedBattery)}
             {serviceTypeModal === 'قطع غيار' && renderSelect('قطعة الغيار', selectedPart, parts, setSelectedPart)}
@@ -2435,7 +2435,12 @@ export default function App() {
               <>
                 <Text style={styles.label}>الكمية</Text>
                 <TextInput style={styles.input} keyboardType="numeric" value={reqQty} onChangeText={setReqQty} placeholder="أدخل الكمية" textAlign="right" />
-                {price > 0 && <Text style={styles.totalText}>الإجمالي التقديري: {money(qty * price)}</Text>}
+                {serviceTypeModal === 'وقود' ? <>
+                  <Text style={styles.label}>سعر اللتر</Text>
+                  <TextInput style={styles.readOnlyInput} value={money(price)} editable={false} textAlign="right" />
+                  <Text style={styles.label}>الإجمالي</Text>
+                  <TextInput style={styles.readOnlyInput} value={money(qty * price)} editable={false} textAlign="right" />
+                </> : (price > 0 && <Text style={styles.totalText}>الإجمالي التقديري: {money(qty * price)}</Text>)}
                 <Text style={styles.label}>الملاحظات</Text>
                 <TextInput style={[styles.input,{minHeight:75}]} value={reqNotes} onChangeText={setReqNotes} multiline textAlign="right" />
               </>
@@ -2699,7 +2704,7 @@ export default function App() {
               <TextInput style={styles.input} value={newItem} onChangeText={setNewItem} placeholder="اسم العنصر" textAlign="right" />
               <TouchableOpacity style={styles.primaryBtn} onPress={saveCodingItem} disabled={codingBusy}><Text style={styles.btnText}>{codingBusy ? 'جارٍ الحفظ...' : 'إضافة عنصر'}</Text></TouchableOpacity>
               <ScrollView style={{maxHeight:320}}>
-                {codingModal ? codingMap[codingModal].map((item,index) => (
+                {codingModal ? (codingMap[codingModal] || []).map((item,index) => (
                   <View key={`${item}-${index}`} style={styles.inlineRow}>
                     <Text style={{flex:1,textAlign:'right'}}>{item}</Text>
                     <TouchableOpacity onPress={() => deleteCodingItem(codingModal,index)}><Text style={styles.deleteText}>حذف</Text></TouchableOpacity>
