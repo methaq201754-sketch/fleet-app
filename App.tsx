@@ -22,8 +22,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.102.72';
-const APP_BUILD = '102';
+const APP_VERSION = '1.103.73';
+const APP_BUILD = '103';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -926,7 +926,7 @@ export default function App() {
         requiredWork: dispatchData?.required_work || req.requiredWork,
       };
       const vehicleKey = String(printReq.vehicleId ?? '').trim();
-      const vInfo = fleet.find(v => String(v.carNumber ?? '').trim() === vehicleKey || String(v.id ?? '').trim() === vehicleKey);
+      const vInfo = fleet.find(v => String(v.id ?? '').trim() === vehicleKey) || fleet.find(v => String(v.carNumber ?? '').trim() === vehicleKey);
       if (!vInfo) {
         throw new Error('لم يتم العثور على السيارة رقم ' + (vehicleKey || 'غير محدد') + ' ضمن بيانات الأسطول المحمّلة. حدّث بيانات الأسطول ثم أعد الطباعة.');
       }
@@ -935,14 +935,12 @@ export default function App() {
       const date = escapeHtml(printReq.date || '');
       const requestNo = escapeHtml(printReq.id || '');
       const workshop = escapeHtml(printReq.workshop || 'ورشة المركز الرئيسي');
-      const carNumber = escapeHtml(printReq.vehicleId || '');
+      const carNumber = escapeHtml(vInfo?.carNumber || '');
       const carName = escapeHtml(vInfo?.name || '');
-      const carType = escapeHtml(vInfo?.type || '');
       const model = escapeHtml(vInfo?.model || '');
       const driver = escapeHtml(printReq.driver || '');
       const fault = escapeHtml(printReq.faultType || '');
       const requiredWork = escapeHtml(printReq.requiredWork || '');
-      const client = escapeHtml(printReq.client || 'الجهة المعنية');
       const html = `
         <!DOCTYPE html>
         <html lang="ar" dir="rtl">
@@ -950,25 +948,25 @@ export default function App() {
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <style>
-            @page { size: A4; margin: 10mm; }
+            @page { size: A4; margin: 6mm; }
             * { box-sizing: border-box; }
-            body { font-family: Tahoma, Arial, sans-serif; color: #161616; font-size: 12px; margin: 0; direction: rtl; }
-            .top { display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; gap: 8px; min-height: 92px; }
-            .company { text-align: right; font-size: 16px; font-weight: 800; line-height: 1.7; }
-            .dept { font-size: 13px; font-weight: 700; }
-            .logo { width: 88px; height: 88px; object-fit: contain; justify-self: center; }
-            .meta { direction: rtl; text-align: left; font-size: 12px; line-height: 2; font-weight: 700; }
-            .title { text-align: center; font-size: 19px; font-weight: 800; text-decoration: underline; margin: 5px 0 13px; }
-            .panel { border: 1.3px solid #333; padding: 11px 13px; margin-bottom: 9px; break-inside: avoid; }
-            .salute { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 10px; }
-            .text { line-height: 2; }
-            .field { margin-top: 8px; line-height: 1.9; }
-            .line { border-bottom: 1px dotted #555; min-height: 24px; margin-top: 3px; }
+            body { font-family: Tahoma, Arial, sans-serif; color: #161616; font-size: 9px; margin: 0; direction: rtl; }
+            .top { display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; gap: 8px; min-height: 58px; }
+            .company { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
+            .dept { font-size: 10px; font-weight: 700; }
+            .logo { width: 58px; height: 58px; object-fit: contain; justify-self: center; }
+            .meta { direction: rtl; text-align: left; font-size: 9px; line-height: 1.5; font-weight: 700; }
+            .title { text-align: center; font-size: 14px; font-weight: 800; text-decoration: underline; margin: 2px 0 5px; }
+            .panel { border: 1.3px solid #333; padding: 5px 7px; margin-bottom: 4px; break-inside: avoid; }
+            .salute { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 4px; }
+            .text { line-height: 1.35; }
+            .field { margin-top: 3px; line-height: 1.25; }
+            .line { border-bottom: 1px dotted #555; min-height: 14px; margin-top: 1px; }
             .vehicle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; margin: 8px 0; }
-            .signatures { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; margin-top: 24px; font-weight: 700; }
+            .signatures { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 8px; font-weight: 700; }
             .sig { min-width: 26%; }
-            .sig-line { border-bottom: 1px dotted #444; height: 22px; margin-top: 8px; }
-            .approval { text-align: center; font-weight: 700; padding: 13px 0; }
+            .sig-line { border-bottom: 1px dotted #444; height: 12px; margin-top: 3px; }
+            .approval { text-align: center; font-weight: 700; padding: 5px 0; }
             .small { font-size: 11px; }
           </style>
         </head>
@@ -989,17 +987,15 @@ export default function App() {
             <div class="vehicle-grid">
               <div><b>اسم السيارة:</b> ${carName}</div>
               <div><b>رقم السيارة:</b> ${carNumber}</div>
-              <div><b>نوع السيارة:</b> ${carType}</div>
               <div><b>الموديل:</b> ${model}</div>
               <div><b>السائق:</b> ${driver}</div>
-              <div><b>الجهة المعنية:</b> ${client}</div>
             </div>
             <div class="field"><b>نوع العطل:</b><div class="line">${fault}</div></div>
             <div class="field"><b>العمل المطلوب:</b><div class="line">${requiredWork}</div></div>
             <div class="signatures">
               <div class="sig">الخدمات الإدارية<div class="sig-line"></div></div>
               <div class="sig">مدير الإدارة<div class="sig-line"></div></div>
-              <div class="sig">السائق<div class="sig-line"></div></div>
+              <div class="sig">السائق: ${driver}<div class="sig-line"></div></div>
             </div>
           </section>
 
@@ -1035,19 +1031,35 @@ export default function App() {
   };
 
   const handlePreviewPrintPunctureService = async (req: RequestItem) => {
-    const vInfo = fleet.find(v => v.carNumber === req.vehicleId);
+    const vehicleKey = String(req.vehicleId ?? '').trim();
+    const vInfo = fleet.find(v => String(v.id ?? '').trim() === vehicleKey) || fleet.find(v => String(v.carNumber ?? '').trim() === vehicleKey);
+    if (!vInfo) {
+      Alert.alert('تعذر إنشاء النموذج', 'لم يتم العثور على السيارة المرتبطة بالطلب. حدّث بيانات الأسطول ثم أعد المحاولة.');
+      return;
+    }
+    const safe = (value: any) => escapeHtml(value == null ? '' : String(value));
     const html = `
-      <html dir="rtl">
+      <!DOCTYPE html>
+      <html lang="ar" dir="rtl">
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-          body { font-family: 'Cairo', Tahoma, Arial, sans-serif; padding: 20px; color: #263238; }
-          .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 15px; }
+          @page { size: A4; margin: 12mm; }
+          * { box-sizing: border-box; }
+          body { font-family: Tahoma, Arial, sans-serif; padding: 0; color: #263238; font-size: 13px; }
+          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 14px; }
           .right-title { font-weight: bold; font-size: 16px; color: #C0272D; }
-          .sub-title { font-size: 13px; font-weight: normal; margin-top: 4px; }
-          .center-title { text-align: center; font-size: 20px; font-weight: bold; margin: 15px 0; text-decoration: underline; }
-          .left-info { font-size: 13px; text-align: left; }
-          .section { border: 1px solid #ccc; padding: 12px; margin-bottom: 15px; border-radius: 8px; background: #fafafa; }
+          .sub-title { font-size: 12px; font-weight: normal; margin-top: 4px; }
+          .left-info { font-size: 11px; text-align: left; line-height: 1.8; }
+          .center-title { text-align: center; font-size: 20px; font-weight: bold; margin: 14px 0; text-decoration: underline; }
+          .notice { text-align: center; font-weight: bold; margin: 10px 0 16px; }
+          .section { border: 1px solid #999; padding: 12px; margin: 10px 0 16px; }
+          .vehicle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 18px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+          th, td { border: 1px solid #555; padding: 10px 8px; text-align: center; height: 38px; }
+          th { background: #f0f0f0; font-weight: bold; }
+          .signature { text-align: left; font-weight: bold; margin-top: 48px; }
         </style>
       </head>
       <body>
@@ -1057,32 +1069,42 @@ export default function App() {
             <div class="sub-title">الخدمات الإدارية</div>
           </div>
           <div class="left-info">
-            <div>تاريخ الطلب: ${req.date}</div>
-            <div>رقم العملية: ${req.id}</div>
+            <div>تاريخ الطلب: ${safe(req.date)}</div>
+            <div>رقم العملية: ${safe(req.id)}</div>
           </div>
         </div>
-
         <div class="center-title">طلب خدمات بنشر</div>
-
-        <p>الإخوة / <b>${escapeHtml(req.workshop || 'الورشة المحددة')}</b> المحترمون،،،</p>
-        <p>بعد التحية،،</p>
-        <p>يرجى عمل الخدمات أدناه للسيارة الموضحة بياناتها أعلاه:</p>
-
+        <div class="notice">إشعار إلى: ${safe(req.workshop || 'الورشة المحددة')}</div>
+        <p>بعد التحية،، يرجى تنفيذ الخدمات الموضحة أدناه للسيارة التالية:</p>
         <div class="section">
-          <div><b>رقم السيارة:</b> ${escapeHtml(req.vehicleId)} &nbsp;&nbsp;&nbsp; <b>اسم السيارة:</b> ${escapeHtml(vInfo?.name || '')}</div>
-          <div style="margin-top: 5px;"><b>السائق:</b> ${escapeHtml(req.driver)}</div>
-          <div style="margin-top: 10px;"><b>الخدمة المطلوبة:</b> ${escapeHtml(req.serviceDescription || req.notes || '')}</div>
+          <div class="vehicle-grid">
+            <div><b>اسم السيارة:</b> ${safe(vInfo.name)}</div>
+            <div><b>رقم السيارة:</b> ${safe(vInfo.carNumber)}</div>
+            <div><b>الموديل:</b> ${safe(vInfo.model)}</div>
+            <div><b>السائق:</b> ${safe(req.driver)}</div>
+          </div>
         </div>
-
-        <div style="text-align: left; font-weight: bold; margin-top: 40px;">
-          الخدمات الإدارية
-        </div>
+        <table>
+          <thead><tr><th>اسم الخدمة</th><th>الكمية</th><th>القيمة</th><th>ملاحظات</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>${safe(req.serviceDescription || req.notes || 'خدمات بنشر')}</td>
+              <td>${safe(req.qty ?? '')}</td>
+              <td>${safe(req.total ?? '')}</td>
+              <td>${safe(req.notes || '')}</td>
+            </tr>
+            <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+            <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+          </tbody>
+        </table>
+        <div class="signature">الخدمات الإدارية</div>
       </body>
       </html>
     `;
     try {
       const file = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri);
+      else Alert.alert('تم إنشاء النموذج', 'تم إنشاء ملف PDF، لكن المشاركة غير متاحة على هذا الجهاز.');
     } catch (e: any) {
       Alert.alert('خطأ', e?.message || 'تعذر الطباعة أو المعاينة');
     }
