@@ -22,8 +22,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.103.73';
-const APP_BUILD = '103';
+const APP_VERSION = '1.104.74';
+const APP_BUILD = '104';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -948,26 +948,30 @@ export default function App() {
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
           <style>
-            @page { size: A4; margin: 6mm; }
+            @page { size: 210mm 396mm; margin: 6mm; }
             * { box-sizing: border-box; }
-            body { font-family: Tahoma, Arial, sans-serif; color: #161616; font-size: 9px; margin: 0; direction: rtl; }
-            .top { display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; gap: 8px; min-height: 58px; }
+            body { font-family: Tahoma, Arial, sans-serif; color: #161616; font-size: 12px; margin: 0; direction: rtl; }
+            .top { display: grid; grid-template-columns: 1fr 100px 1fr; align-items: center; gap: 8px; min-height: 72px; }
             .company { text-align: right; font-size: 12px; font-weight: 800; line-height: 1.35; }
             .dept { font-size: 10px; font-weight: 700; }
-            .logo { width: 58px; height: 58px; object-fit: contain; justify-self: center; }
+            .logo { width: 68px; height: 68px; object-fit: contain; justify-self: center; }
             .meta { direction: rtl; text-align: left; font-size: 9px; line-height: 1.5; font-weight: 700; }
             .title { text-align: center; font-size: 14px; font-weight: 800; text-decoration: underline; margin: 2px 0 5px; }
             .panel { border: 1.3px solid #333; padding: 5px 7px; margin-bottom: 4px; break-inside: avoid; }
-            .salute { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 4px; }
+            .salute { display: block; text-align: center; font-weight: 700; margin-bottom: 7px; line-height: 1.8; }
+            .salute .to { display:block; }
+            .salute .greet { display:block; text-align:center; }
             .text { line-height: 1.35; }
             .field { margin-top: 3px; line-height: 1.25; }
             .line { border-bottom: 1px dotted #555; min-height: 14px; margin-top: 1px; }
-            .vehicle-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 18px; margin: 8px 0; }
+            .vehicle-grid { display: grid; grid-template-columns: 1.2fr 1fr 0.8fr; gap: 7px 12px; margin: 8px 0; border:1px solid #555; padding:9px; }
             .signatures { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-top: 8px; font-weight: 700; }
             .sig { min-width: 26%; }
             .sig-line { border-bottom: 1px dotted #444; height: 12px; margin-top: 3px; }
             .approval { text-align: center; font-weight: 700; padding: 5px 0; }
-            .small { font-size: 11px; }
+            .small { font-size: 14px; }
+            .fault-box { border:1px solid #555; padding:7px 9px; margin-top:7px; }
+            .write-line { height:25px; border-bottom:1px dotted #555; }
           </style>
         </head>
         <body>
@@ -982,20 +986,18 @@ export default function App() {
           <div class="title">طلب إصلاح سيارة</div>
 
           <section class="panel">
-            <div class="salute"><span>الأخوة / ${workshop} المحترمون</span><span>بعد التحية،،،</span></div>
+            <div class="salute"><span class="to">الأخوة / ${workshop} المحترمون</span><span class="greet">بعد التحية،،،</span></div>
             <div class="text">الرجاء إجراء ما يلي على السيارة المذكورة أدناه وإفادتنا بتقرير يوضح نوع العطل وسببه:</div>
             <div class="vehicle-grid">
               <div><b>اسم السيارة:</b> ${carName}</div>
               <div><b>رقم السيارة:</b> ${carNumber}</div>
               <div><b>الموديل:</b> ${model}</div>
-              <div><b>السائق:</b> ${driver}</div>
             </div>
-            <div class="field"><b>نوع العطل:</b><div class="line">${fault}</div></div>
-            <div class="field"><b>العمل المطلوب:</b><div class="line">${requiredWork}</div></div>
+            <div class="fault-box"><div class="field"><b>نوع العطل:</b><div class="write-line">${fault}</div><div class="write-line"></div><div class="write-line"></div></div><div class="field"><b>العمل المطلوب:</b><div class="write-line">${requiredWork}</div><div class="write-line"></div><div class="write-line"></div></div></div>
             <div class="signatures">
               <div class="sig">الخدمات الإدارية<div class="sig-line"></div></div>
               <div class="sig">مدير الإدارة<div class="sig-line"></div></div>
-              <div class="sig">السائق: ${driver}<div class="sig-line"></div></div>
+              <div class="sig">السائق<div class="sig-line"></div><div>${driver}</div></div>
             </div>
           </section>
 
@@ -1045,10 +1047,11 @@ export default function App() {
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-          @page { size: A4; margin: 12mm; }
+          @page { size: A4; margin: 10mm; }
           * { box-sizing: border-box; }
-          body { font-family: Tahoma, Arial, sans-serif; padding: 0; color: #263238; font-size: 13px; }
-          .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #C0272D; padding-bottom: 10px; margin-bottom: 14px; }
+          body { font-family: Tahoma, Arial, sans-serif; padding: 0; color: #263238; font-size: 14px; }
+          .header { display: grid; grid-template-columns: 1fr 72px 1fr; justify-content: space-between; align-items: center; border: 1px solid #777; border-radius: 9px; padding: 8px; margin-bottom: 14px; }
+          .header-logo { width:68px; height:68px; object-fit:contain; justify-self:center; }
           .right-title { font-weight: bold; font-size: 16px; color: #C0272D; }
           .sub-title { font-size: 12px; font-weight: normal; margin-top: 4px; }
           .left-info { font-size: 11px; text-align: left; line-height: 1.8; }
@@ -1068,14 +1071,14 @@ export default function App() {
             <div class="right-title">الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة</div>
             <div class="sub-title">الخدمات الإدارية</div>
           </div>
+          <img class="header-logo" src="${COMPANY_LOGO_DATA_URI}" />
           <div class="left-info">
             <div>تاريخ الطلب: ${safe(req.date)}</div>
             <div>رقم العملية: ${safe(req.id)}</div>
           </div>
         </div>
         <div class="center-title">طلب خدمات بنشر</div>
-        <div class="notice">إشعار إلى: ${safe(req.workshop || 'الورشة المحددة')}</div>
-        <p>بعد التحية،، يرجى تنفيذ الخدمات الموضحة أدناه للسيارة التالية:</p>
+        <p class="notice">يرجى تنفيذ الخدمة الموضحة أدناه للسيارة التالية:</p>
         <div class="section">
           <div class="vehicle-grid">
             <div><b>اسم السيارة:</b> ${safe(vInfo.name)}</div>
@@ -1093,8 +1096,7 @@ export default function App() {
               <td>${safe(req.total ?? '')}</td>
               <td>${safe(req.notes || '')}</td>
             </tr>
-            <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
-            <tr><td>&nbsp;</td><td></td><td></td><td></td></tr>
+            
           </tbody>
         </table>
         <div class="signature">الخدمات الإدارية</div>
@@ -1108,6 +1110,29 @@ export default function App() {
     } catch (e: any) {
       Alert.alert('خطأ', e?.message || 'تعذر الطباعة أو المعاينة');
     }
+  };
+
+  const handlePreviewPrintFuel = async (req: RequestItem) => {
+    const vehicleKey = String(req.vehicleId ?? '').trim();
+    const vInfo = fleet.find(v => String(v.id ?? '').trim() === vehicleKey) || fleet.find(v => String(v.carNumber ?? '').trim() === vehicleKey);
+    if (!vInfo) { Alert.alert('تعذر إنشاء النموذج', 'لم يتم العثور على السيارة المرتبطة بالطلب.'); return; }
+    const safe = (value: any) => escapeHtml(value == null ? '' : String(value));
+    const html = `<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+      @page{size:A4;margin:10mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#222;font-size:14px;margin:0;direction:rtl}
+      .header{display:grid;grid-template-columns:1fr 76px 1fr;align-items:center;border:1px solid #777;border-radius:9px;padding:8px;min-height:82px}
+      .logo{width:70px;height:70px;object-fit:contain;justify-self:center}.company{font-weight:bold;font-size:14px;line-height:1.6}.meta{text-align:left;font-size:12px;line-height:1.8}
+      h2{text-align:center;text-decoration:underline;font-size:19px;margin:14px 0 20px}.panel{border:1px solid #555;border-radius:8px;padding:14px;margin-top:10px}
+      .row{display:flex;justify-content:space-between;gap:14px;margin:12px 0}.row div{flex:1}.text{line-height:2.1;margin-top:14px}
+      table{width:100%;border-collapse:collapse;margin-top:15px}th,td{border:1px solid #555;padding:10px;text-align:center}th{font-weight:bold}
+      .sign{display:flex;justify-content:space-between;margin-top:55px;font-weight:bold}.sign span{min-width:35%;border-top:1px dotted #555;padding-top:8px}
+      </style></head><body><header class="header"><div><div class="company">الشركة اليمنية لصناعة الطلاء ومشتقاته المحدودة</div><div>الخدمات الإدارية</div></div><img class="logo" src="${COMPANY_LOGO_DATA_URI}"/><div class="meta"><div>رقم الفاتورة / الطلب: ${safe(req.id)}</div><div>التاريخ: ${safe(req.date)}</div></div></header>
+      <h2>إرسالية محروقات</h2><section class="panel"><div class="row"><div>الأخوة / محطة ${safe(req.station || '................')}</div><div>يرجى تزويد السيارة رقم / ${safe(vInfo.carNumber)}</div></div>
+      <div class="row"><div>بقيادة الأخ / ${safe(req.driver)}</div><div>اسم السيارة: ${safe(vInfo.name)}</div></div><div class="row"><div>الموديل: ${safe(vInfo.model)}</div><div>الفرع / الإدارة: الخدمات الإدارية</div></div>
+      <div class="text">بكمية المحروقات الموضحة أدناه وقيدها على حسابنا طرفكم:</div></section>
+      <table><thead><tr><th>الوقود</th><th>المخصص</th><th>الكمية</th><th>السعر</th><th>القيمة</th></tr></thead><tbody><tr><td>${safe(req.fuelType || req.unit || '')}</td><td>${safe(req.allocation || '')}</td><td>${safe(req.qty)}</td><td>${safe((req as any).unitPrice ?? '')}</td><td>${safe(req.total)}</td></tr></tbody></table>
+      <div class="sign"><span>المستلم: ........................</span><span>المختص: ........................</span></div></body></html>`;
+    try { const file = await Print.printToFileAsync({html}); if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri); else Alert.alert('تم إنشاء النموذج','تم إنشاء PDF لكن المشاركة غير متاحة.'); }
+    catch(e:any){Alert.alert('تعذر إنشاء إرسالية المحروقات',e?.message || 'حدث خطأ أثناء الطباعة.');}
   };
 
   const saveCodingItem = async () => {
@@ -2173,6 +2198,7 @@ export default function App() {
               </View>
               {r.type==='إرسالية صيانة'&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintCarRepair(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity>:null}
               {r.type==='إرسالية خدمات بنشر'&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintPunctureService(r)}><Text style={styles.btnText}>معاينة وطباعة النموذج</Text></TouchableOpacity>:null}
+              {(r.type==='وقود'||r.type==='طلب محروقات')&&normalized==='تمت الموافقة'?<TouchableOpacity style={[styles.actionBtn,{backgroundColor:'#2563EB',marginTop:9}]} onPress={()=>handlePreviewPrintFuel(r)}><Text style={styles.btnText}>معاينة وطباعة إرسالية المحروقات</Text></TouchableOpacity>:null}
             </View>;
           })}
         </View> : null}
