@@ -22,8 +22,8 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   }
 });
 
-const APP_VERSION = '1.104.74';
-const APP_BUILD = '104';
+const APP_VERSION = '1.105.75';
+const APP_BUILD = '105';
 const COLORS = {
   primary: '#C0272D', primaryDark: '#9E1F24', accent: '#FF7A45',
   bg: '#FAF8F8', card: '#EBEBEB', text: '#171717', muted: '#777777',
@@ -93,10 +93,8 @@ const isRequestApprover = (user: any) => {
 
 export default function App() {
   const [showFourDotSplash, setShowFourDotSplash] = useState(true);
-  useEffect(() => {
-    const splashTimer = setTimeout(() => setShowFourDotSplash(false), 1400);
-    return () => clearTimeout(splashTimer);
-  }, []);
+  // Keep the four-dot splash visible until the persisted Supabase session is restored.
+
 
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [username, setUsername] = useState('');
@@ -407,25 +405,39 @@ export default function App() {
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session?.user) {
-        await fetchUserProfileAndRestore(session.user);
-        await loadSupabaseData();
+    let mounted = true;
+    let restoring = true;
+    const restoreSession = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (session?.user) {
+          await fetchUserProfileAndRestore(session.user);
+          await loadSupabaseData();
+        } else if (mounted) {
+          setCurrentUser(null);
+        }
+      } catch (e: any) {
+        console.log('Session restore error:', e?.message || e);
+        if (mounted) setCurrentUser(null);
+      } finally {
+        restoring = false;
+        if (mounted) setShowFourDotSplash(false);
       }
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (session?.user) {
-        await fetchUserProfileAndRestore(session.user);
-      } else {
-        setCurrentUser(null);
-      }
-    });
-
-    loadSupabaseData();
-    return () => {
-      subscription.unsubscribe();
     };
+    restoreSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted || restoring) return;
+      if (event === 'SIGNED_OUT' || !session?.user) {
+        setCurrentUser(null);
+        return;
+      }
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
+        // Defer Supabase reads outside the auth callback to avoid auth-lock contention.
+        Promise.resolve().then(() => fetchUserProfileAndRestore(session.user));
+      }
+    });
+    return () => { mounted = false; subscription.unsubscribe(); };
   }, []);
 
   const fetchUserProfileAndRestore = async (user: any) => {
@@ -2152,20 +2164,15 @@ export default function App() {
       const createType = isDispatch ? 'إرسالية صيانة' : selectedServiceScreenType;
       return <View>
         <TouchableOpacity onPress={() => {setSelectedServiceScreenType(null);setRequestStatusFilter('الكل');}} style={[styles.actionBtn,{backgroundColor:COLORS.muted,marginBottom:12}]}><Text style={styles.btnText}>رجوع إلى الرئيسية</Text></TouchableOpacity>
-        <Text style={styles.sectionTitle}>{serviceTypes.find(x=>x.type===selectedServiceScreenType)?.label || selectedServiceScreenType}</Text>
-        <View style={{flexDirection:'row-reverse',backgroundColor:'#FFFFFF',borderRadius:14,padding:5,marginBottom:14,borderWidth:1,borderColor:COLORS.border}}>
-          <TouchableOpacity onPress={()=>setSubView('create')} style={{flex:1,paddingVertical:13,alignItems:'center',borderRadius:11,backgroundColor:subView==='create'?COLORS.primary:'#FFFFFF'}}>
-            <Text style={{fontWeight:'900',color:subView==='create'?'#FFFFFF':COLORS.text}}>طلب الخدمة</Text>
-          </TouchableOpacity>
+        <Text style={[styles.sectionTitle,{textAlign:'center',alignSelf:'stretch'}]}>{serviceTypes.find(x=>x.type===selectedServiceScreenType)?.label || selectedServiceScreenType}</Text>
+        <View style={{flexDirection:'row',backgroundColor:'#FFFFFF',borderRadius:14,padding:5,marginBottom:14,borderWidth:1,borderColor:COLORS.border}}>
           <TouchableOpacity onPress={()=>setSubView('report')} style={{flex:1,paddingVertical:13,alignItems:'center',borderRadius:11,backgroundColor:subView==='report'?COLORS.primary:'#FFFFFF'}}>
             <Text style={{fontWeight:'900',color:subView==='report'?'#FFFFFF':COLORS.text}}>تقارير الطلبات ({typeRows.length})</Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={()=>{setSubView('create');openServiceRequest(createType);}} style={{flex:1,paddingVertical:13,alignItems:'center',borderRadius:11,backgroundColor:subView==='create'?COLORS.primary:'#FFFFFF'}}>
+            <Text style={{fontWeight:'900',color:subView==='create'?'#FFFFFF':COLORS.text}}>طلب الخدمة</Text>
+          </TouchableOpacity>
         </View>
-        {subView==='create' ? <View style={styles.card}>
-          <Text style={styles.cardTitle}>طلب جديد</Text>
-          <Text style={styles.cardText}>أدخل بيانات الطلب من النموذج التالي.</Text>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => openServiceRequest(createType)}><Text style={styles.btnText}>فتح نموذج الطلب</Text></TouchableOpacity>
-        </View> : null}
         {subView==='report' ? <View style={{marginTop:4}}>
           <Text style={styles.sectionTitle}>تقارير الطلبات ({typeRows.length})</Text>
           <Text style={styles.label}>فلترة حسب حالة الطلب</Text>
@@ -2771,8 +2778,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
-      <View style={styles.topHeader}>
-        <View><Text style={styles.headerTitle}>{currentUser.name || `السيارة ${currentUser.id}`}</Text><Text style={styles.headerSub}>{currentUser.driver || currentUser.profile?.full_name || currentUser.username}</Text></View>
+      <View style={[styles.topHeader,{justifyContent:'flex-start',alignItems:'center'}]}>
+        <View style={{marginLeft:'auto',alignItems:'flex-end',backgroundColor:'#F3E8E8',borderRadius:12,paddingHorizontal:16,paddingVertical:9,minWidth:'62%',borderWidth:1,borderColor:'#E7C9CB'}}>
+          <Text style={[styles.headerTitle,{textAlign:'right'}]}>{currentUser.name || `السيارة ${currentUser.id}`}</Text>
+          <Text style={[styles.headerSub,{textAlign:'right'}]}>{currentUser.driver || currentUser.profile?.full_name || currentUser.username}</Text>
+        </View>
       </View>
 
       <ScrollView style={styles.content} keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingBottom:110}}>
